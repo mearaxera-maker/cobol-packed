@@ -1,0 +1,31 @@
+# --- Rust / Cargo ---
+/target
+**/*.rs.bk
+
+# Criterion local reports
+/target/criterion
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Local env / credentials ---
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# --- Local logs / generated files ---
+*.log
+*.tmp
+coverage/
+tarpaulin-report.html
+
+# Keep Cargo.lock committed for this repository once binaries/examples/workspaces are added.
+# For library-only publication this can be revisited deliberately, not accidentally.
