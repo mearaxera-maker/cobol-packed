@@ -5,7 +5,14 @@
 *.toml text
 *.yml text
 *.yaml text
+*.json text
 
+*.crate binary
+*.zip binary
+*.tar.gz binary
 *.png binary
 *.jpg binary
 *.svg text
+
+src/cli/ebcdic_tables.rs linguist-generated=true
+src/cli/mixed_dbcs_tables.rs linguist-generated=true

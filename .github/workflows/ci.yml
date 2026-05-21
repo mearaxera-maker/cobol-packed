@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Lint
+  lint:
+    name: Lint (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  # Test matrix
+  test:
+    name: Test (${{ matrix.os }} / ${{ matrix.toolchain }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        toolchain: [stable, beta]
+        include:
+          - os: ubuntu-latest
+            toolchain: "1.74"  # MSRV for the CLI application dependencies
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.toolchain }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --all-features
+      - run: cargo test --doc --all-features
+      - run: cargo test --lib --no-default-features
+      - run: cargo build --features cli --bin hostlens
+      - run: cargo build --features cli --bin cobol-packed
+
+  # SIMD-specific test (AVX2 target)
+  test-avx2:
+    name: Test (AVX2 target feature)
+    runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-C target-feature=+avx2"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --features simd,avx2
+
+  # Nightly (docs, miri, unstable lints)
+  nightly:
+    name: Nightly checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri, rust-src
+      - uses: Swatinem/rust-cache@v2
+      - name: Miri (decode paths)
+        run: cargo miri test -- decode
+      - name: Build docs (all features)
+        run: cargo doc --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: "--cfg docsrs"
+
+  # Benchmarks compile check
+  bench-check:
+    name: Benchmarks compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo bench --no-run --all-features
+
+  # Examples compile check
+  examples:
+    name: Examples compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --examples --all-features
+
+  cli-smoke:
+    name: CLI smoke tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --features cli --test cli_smoke
+      - run: cargo run --features cli --bin hostlens -- decode --digits 4 --scale 2 --signed --hex 01234C
+
+  feature-combinations:
+    name: Feature combination checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check
+      - run: cargo check --features cli --bin hostlens
+      - run: cargo check --features cli --bin cobol-packed
+      - run: cargo check --features simd
+      - run: cargo check --all-features
+
+  supply-chain:
+    name: Supply-chain audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  fuzz-smoke:
+    name: Fuzz harness smoke build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz --locked
+      - run: cargo fuzz build fuzz_decode
+      - run: cargo fuzz build fuzz_schema_batch
+
+  # Minimal dependency versions
+  minimal-versions:
+    name: Minimal dependency versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo +nightly update -Z minimal-versions
+      - run: cargo +nightly test --all-features

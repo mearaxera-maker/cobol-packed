@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "record_length": 4,
+  "input_encoding": "binary",
+  "on_error": "emit-error-row",
+  "verification_scope": "record",
+  "fields": [
+    {
+      "name": "amount",
+      "offset": 0,
+      "length": 3,
+      "total_digits": 4,
+      "scale": 2,
+      "signed": true,
+      "sign_mode": "pfd",
+      "mode": "lossless",
+      "required": true
+    }
+  ],
+  "fillers": [
+    {
+      "name": "reserved-tail",
+      "offset": 3,
+      "length": 1
+    }
+  ]
+}
