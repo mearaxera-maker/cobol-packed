@@ -1,0 +1,171 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  validate:
+    name: Validate tag matches Cargo.toml version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version match
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Tag: $TAG  Cargo: $CARGO_VERSION"
+          [ "$TAG" = "$CARGO_VERSION" ] || (echo "Version mismatch" && exit 1)
+
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run tests before publish
+        run: cargo test --all-features
+      - name: Publish
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  build-artifacts:
+    name: Build release artifact (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin: hostlens
+            archive: hostlens-linux-x86_64.tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bin: hostlens
+            archive: hostlens-macos-x86_64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: hostlens.exe
+            archive: hostlens-windows-x86_64.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --features cli --bin hostlens --target ${{ matrix.target }}
+      - name: Package Unix artifact
+        if: runner.os != 'Windows'
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/
+          cp README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE THIRD_PARTY_NOTICES.md dist/
+          target/${{ matrix.target }}/release/${{ matrix.bin }} completions bash > dist/hostlens.bash
+          target/${{ matrix.target }}/release/${{ matrix.bin }} completions zsh > dist/_hostlens
+          target/${{ matrix.target }}/release/${{ matrix.bin }} completions fish > dist/hostlens.fish
+          target/${{ matrix.target }}/release/${{ matrix.bin }} man > dist/hostlens.1
+          cargo metadata --format-version 1 > dist/SBOM.cargo-metadata.json
+          tar -czf ${{ matrix.archive }} -C dist .
+          shasum -a 256 ${{ matrix.archive }} > ${{ matrix.archive }}.sha256
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/${{ matrix.bin }} dist/
+          Copy-Item README.md,CHANGELOG.md,LICENSE-MIT,LICENSE-APACHE,THIRD_PARTY_NOTICES.md dist/
+          & "target/${{ matrix.target }}/release/${{ matrix.bin }}" completions powershell | Set-Content dist/hostlens.ps1
+          & "target/${{ matrix.target }}/release/${{ matrix.bin }}" man | Set-Content dist/hostlens.1
+          cargo metadata --format-version 1 | Set-Content dist/SBOM.cargo-metadata.json
+          Compress-Archive -Path dist/* -DestinationPath ${{ matrix.archive }}
+          Get-FileHash ${{ matrix.archive }} -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  ${{ matrix.archive }}" } | Set-Content ${{ matrix.archive }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256
+
+  release-smoke:
+    name: Release artifact smoke test
+    runs-on: ubuntu-latest
+    needs: build-artifacts
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - name: Smoke test Linux binary artifact
+        run: |
+          mkdir smoke
+          tar -xzf release-artifacts/hostlens-linux-x86_64.tar.gz/hostlens-linux-x86_64.tar.gz -C smoke
+          smoke/hostlens decode --digits 4 --scale 2 --signed --hex 01234C
+          cat > smoke/schema.json <<'JSON'
+          {
+            "version": 1,
+            "record_length": 3,
+            "input_encoding": "binary",
+            "on_error": "emit-error-row",
+            "fields": [{
+              "name": "amount",
+              "offset": 0,
+              "length": 3,
+              "total_digits": 4,
+              "scale": 2,
+              "signed": true,
+              "sign_mode": "pfd",
+              "mode": "lossless"
+            }]
+          }
+          JSON
+          printf '\x01\x23\x4C' > smoke/records.bin
+          smoke/hostlens schema check --schema smoke/schema.json --output json
+          smoke/hostlens batch decode --schema smoke/schema.json --input smoke/records.bin --output jsonl
+          smoke/hostlens batch verify --schema smoke/schema.json --input smoke/records.bin --output audit
+
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [publish, build-artifacts, release-smoke]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign checksum files
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          find release-artifacts -name '*.sha256' -print0 | while IFS= read -r -d '' checksum; do
+            cosign sign-blob --yes \
+              --output-signature "${checksum}.sig" \
+              --output-certificate "${checksum}.pem" \
+              "$checksum"
+          done
+      - name: Extract changelog entry
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          # Pull the section for this version from CHANGELOG.md
+          NOTES=$(awk "/^## \[$VERSION\]/,/^## \[/" CHANGELOG.md | head -n -1)
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+      - uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.changelog.outputs.notes }}
+          generate_release_notes: false
+          files: |
+            release-artifacts/**/*.tar.gz
+            release-artifacts/**/*.zip
+            release-artifacts/**/*.sha256
+            release-artifacts/**/*.sha256.sig
+            release-artifacts/**/*.sha256.pem
