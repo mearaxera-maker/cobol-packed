@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something produces incorrect output or panics
+about: Something produces incorrect output, rejects valid input, or panics
 title: "[BUG] "
 labels: bug
 assignees: ''
@@ -10,20 +10,15 @@ assignees: ''
 
 <!-- One-line description of what went wrong. -->
 
-## Invariant violated (if known)
+## Area
 
-<!-- Which law from docs/formal_spec.md or docs/architecture.md is broken?
-     E.g. "Lossless identity: encode(decode(b)) ≠ b" or "panic on decode" -->
+<!-- Codec, HostLens CLI, schema validation, copybook import, EBCDIC/DBCS,
+     audit output, release packaging, docs, or other. -->
 
 ## Reproduction
 
-```rust
-// Minimal, self-contained example that demonstrates the bug.
-use cobol_packed::{...};
-
-fn main() {
-    // ...
-}
+```text
+# Minimal command, schema, input bytes, or Rust snippet that reproduces it.
 ```
 
 ## Expected behavior
@@ -32,17 +27,21 @@ fn main() {
 
 ## Actual behavior
 
-<!-- What actually happened? Include the full panic message or wrong output. -->
+<!-- What happened instead? Include full error JSON or panic text. -->
+
+## Invariant violated, if known
+
+<!-- Example: lossless identity `encode(decode(bytes)) == bytes`, no panic on
+     decode, schema hash ignores descriptions/output, or exact record coverage. -->
 
 ## Environment
 
 - `cobol_packed` version:
+- HostLens version (`hostlens --version`):
 - Rust toolchain (`rustc --version`):
 - OS + architecture:
-- Feature flags enabled:
-- Target CPU features (`RUSTFLAGS`):
+- Feature flags:
 
-## Additional context
+## Data sensitivity
 
-<!-- SIMD-related bugs: note whether AVX2 or SSE2 is active.
-     Lossless bugs: include the raw hex bytes and the config used. -->
+<!-- Do not paste real customer host data. Redact or synthesize fixtures. -->

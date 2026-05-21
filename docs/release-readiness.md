@@ -1,28 +1,33 @@
 # HostLens Release Readiness
 
-This workspace is an extracted local release-candidate archive, not a connected
-GitHub checkout. Ready-only release verification can be performed here, but a
-live release cannot be completed from this workspace without external setup.
+HostLens releases are reviewed through pull requests, merged to `main`, and
+published by tag-driven GitHub Actions. Do not publish directly from a local
+workspace unless the GitHub release workflow is unavailable and the maintainer
+explicitly approves the fallback.
 
-## Confirmed Locally
+## Current 1.1.0 Gate
 
-- `.github/workflows/release.yml` validates tag/version parity.
-- The release workflow contains `cargo publish --token
-  ${{ secrets.CARGO_REGISTRY_TOKEN }}`.
-- Release artifacts are configured for Linux, macOS, and Windows.
-- The workflow packages README, changelog, MIT/Apache license files, third-party
-  notices, shell completions, a man page, cargo metadata SBOM, SHA256 checksums,
-  and Sigstore checksum signatures.
+- PR #1 is the review gate for HostLens 1.1.0.
+- The PR must stay mergeable and pass CI before merge.
+- Binary archives, `.crate` files, checksums, and signatures belong in GitHub
+  Release assets, not in git history.
+- CodeRabbit is best-effort and should be run from Linux, macOS, or Codespaces
+  if the local Windows shell cannot install the CLI.
 
-## Not Verifiable From This Archive
+## Required Repository Settings
 
-- No Git remote is configured in this local workspace.
-- No release tags exist in this local workspace.
-- GitHub repository secrets cannot be inspected locally, so
-  `CARGO_REGISTRY_TOKEN` must be verified in the repository settings before a
-  real release.
+These settings require repository owner or administrator access:
 
-## Ready-Only Commands
+- Protect `main`.
+- Require pull requests before merging.
+- Require CI checks before merging.
+- Disallow direct pushes to `main`.
+- Add or verify the `CARGO_REGISTRY_TOKEN` Actions secret.
+- Enable Dependabot alerts and updates where available.
+
+## Local Verification
+
+Run these commands before marking the release PR ready for review:
 
 ```text
 cargo fmt --all --check
@@ -33,5 +38,21 @@ cargo package --allow-dirty
 cargo publish --dry-run --allow-dirty
 ```
 
-Do not create a tag, push, publish to crates.io, or create a GitHub release from
-this archive unless that live release is explicitly approved.
+Run Criterion on a quiet machine before publishing performance claims:
+
+```text
+cargo bench --all-features
+```
+
+## Release Workflow
+
+1. Merge the reviewed release PR into `main`.
+2. Confirm `Cargo.toml` version and changelog entry.
+3. Create tag `v1.1.0` from the merged `main` commit.
+4. Push the tag.
+5. Let `.github/workflows/release.yml` validate the tag, publish to crates.io,
+   build platform artifacts, smoke-test the Linux artifact, sign checksums, and
+   create the GitHub Release.
+
+If `CARGO_REGISTRY_TOKEN` is missing, do not push the release tag until the
+secret is added or the publish job is intentionally disabled for that release.

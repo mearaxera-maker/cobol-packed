@@ -2,3 +2,5 @@
 /.generated/
 /criterion/
 /dist/
+*.crate
+*.zip

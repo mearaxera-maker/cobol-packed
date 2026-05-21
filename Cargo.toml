@@ -19,6 +19,8 @@ exclude = [
     "target/",
     "criterion/",
     "dist/",
+    "*.crate",
+    "*.zip",
 ]
 
 [features]

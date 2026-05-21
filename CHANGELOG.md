@@ -9,6 +9,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+- Repository launch guide, roadmap, agent guidance, Dependabot config, and
+  CODEOWNERS for release operations.
+
+### Changed
+- Release archives and `.crate` packages are now treated as GitHub Release
+  assets rather than committed repository files.
+
 ## [1.1.0] - 2026-05-21
 
 ### Added

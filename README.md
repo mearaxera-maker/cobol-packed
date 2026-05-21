@@ -187,5 +187,6 @@ checksum signatures.
 See [docs/cli.md](docs/cli.md) for the full schema format, output contract,
 error model, limits, and operational examples. See
 [docs/developer-map.md](docs/developer-map.md) for the source layout and the
-module ownership map. See [docs/release-readiness.md](docs/release-readiness.md)
-for ready-only release checks and the local archive limitations.
+module ownership map. See [docs/repository-guide.md](docs/repository-guide.md)
+for GitHub workflow and branch guidance, [docs/release-readiness.md](docs/release-readiness.md)
+for release gates, and [ROADMAP.md](ROADMAP.md) for post-1.1 priorities.
