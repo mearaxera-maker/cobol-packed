@@ -1,19 +1,61 @@
-# --- Rust / Cargo ---
+# =========================================================
+# cobol_packed
+# Forensic-grade Rust COMP-3 codec
+# =========================================================
+
+# ---------------------------------------------------------
+# Rust / Cargo
+# ---------------------------------------------------------
+
 /target
 **/*.rs.bk
 
-# Criterion local reports
-/target/criterion
+# Keep Cargo.lock intentionally when binaries/workspaces exist.
+# Cargo.lock
 
-# --- Editors / OS ---
+# ---------------------------------------------------------
+# Criterion / Profiling
+# ---------------------------------------------------------
+
+target/criterion/
+*.folded
+perf.data*
+cachegrind.out.*
+
+# ---------------------------------------------------------
+# Coverage / Fuzzing
+# ---------------------------------------------------------
+
+coverage/
+tarpaulin-report.html
+*.profraw
+*.profdata
+fuzz/artifacts/
+fuzz/corpus/
+
+# ---------------------------------------------------------
+# IDE / Editor
+# ---------------------------------------------------------
+
 .vscode/
 .idea/
+*.iml
 *.swp
 *.swo
+*~
+
+# ---------------------------------------------------------
+# OS Noise
+# ---------------------------------------------------------
+
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# --- Local env / credentials ---
+# ---------------------------------------------------------
+# Secrets / Credentials
+# ---------------------------------------------------------
+
 .env
 .env.*
 *.pem
@@ -21,11 +63,14 @@ Thumbs.db
 *.p12
 *.pfx
 
-# --- Local logs / generated files ---
-*.log
-*.tmp
-coverage/
-tarpaulin-report.html
+# ---------------------------------------------------------
+# Temp / Generated
+# ---------------------------------------------------------
 
-# Keep Cargo.lock committed for this repository once binaries/examples/workspaces are added.
-# For library-only publication this can be revisited deliberately, not accidentally.
+*.tmp
+*.temp
+*.log
+scratch/
+notes/
+book/
+site/
