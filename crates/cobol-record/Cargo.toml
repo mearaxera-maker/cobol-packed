@@ -1,0 +1,12 @@
+[package]
+name = "cobol-record"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+description = "Internal COBOL record layout and codec model for cobol-packed"
+
+[dependencies]
+rust_decimal = "1.36"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"

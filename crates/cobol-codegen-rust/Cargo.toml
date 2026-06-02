@@ -1,0 +1,20 @@
+[package]
+name = "cobol-codegen-rust"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+description = "Rust backend for the COBOL-to-Rust converter"
+
+[dependencies]
+cobol-ir = { path = "../cobol-ir" }
+cobol-platform = { path = "../cobol-platform" }
+cobol-record = { path = "../cobol-record" }
+cobol-sema = { path = "../cobol-sema" }
+cobol-source = { path = "../cobol-source" }
+cobol-syntax = { path = "../cobol-syntax" }
+cobol-text = { path = "../cobol-text" }
+rust_decimal = "1.36"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"

@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "canonical": true,
+  "purpose": "Minimal navigation map for humans and agents working in this repository.",
+  "principle": "Do not move Rust crates or tests just to make the tree look clean; keep stable paths and add clear entry points.",
+  "start_here": [
+    {
+      "label": "Repository overview",
+      "path": "README.md",
+      "use_when": "You need the public summary, quickstart commands, or top-level project identity."
+    },
+    {
+      "label": "Human navigation dashboard",
+      "path": "docs/project-navigation.md",
+      "use_when": "You need to find the right files quickly."
+    },
+    {
+      "label": "Feature capability matrix",
+      "path": "migration-capability-matrix.json",
+      "use_when": "You need canonical supported/partial/blocked/unknown status."
+    },
+    {
+      "label": "Maintainer roadmap and review map",
+      "path": "agent-criticism-map.json",
+      "use_when": "You need to split work across implementers and critics."
+    }
+  ],
+  "domains": [
+    {
+      "id": "packed-decimal-core",
+      "name": "COMP-3 packed decimal core",
+      "summary": "Public library and CLI foundation for packed decimal encode/decode, strict/lossless policies, and forensic record workflows.",
+      "primary_paths": [
+        "src/lib.rs",
+        "src/simd.rs",
+        "src/bin/cobol-packed.rs",
+        "src/cli",
+        "tests/cli_smoke.rs",
+        "docs/ARCHITECTURE.md",
+        "docs/cli.md"
+      ]
+    },
+    {
+      "id": "converter-pipeline",
+      "name": "COBOL-to-Rust converter pipeline",
+      "summary": "Compiler-shaped flow from source normalization through syntax, semantic IR, Rust codegen, and VM-backed execution.",
+      "primary_paths": [
+        "crates/cobol-text",
+        "crates/cobol-source",
+        "crates/cobol-syntax",
+        "crates/cobol-ir",
+        "crates/cobol-sema",
+        "crates/cobol-codegen-rust",
+        "crates/cobol-vm",
+        "docs/converter.md"
+      ]
+    },
+    {
+      "id": "record-layout",
+      "name": "Record layout and schema tooling",
+      "summary": "Shared byte-layout facts and codecs used by CLI schemas and generated converter accessors.",
+      "primary_paths": [
+        "crates/cobol-record",
+        "src/cli/record.rs",
+        "docs/feature-map.md",
+        "tests/cli_smoke.rs"
+      ]
+    },
+    {
+      "id": "runtime-platform",
+      "name": "Runtime platform and file bindings",
+      "summary": "Runtime file configuration, generated runtime support, fixed sequential file slice, and future platform hooks.",
+      "primary_paths": [
+        "crates/cobol-platform",
+        "crates/cobol-runtime",
+        "crates/cobol-vm",
+        "docs/converter.md",
+        "tests/converter_smoke.rs",
+        "tests/oracle_gnucobol.rs"
+      ]
+    },
+    {
+      "id": "capability-and-agent-planning",
+      "name": "Capability tracking and maintainer planning",
+      "summary": "Canonical migration status, readiness estimates, task splits, review lanes, and dashboard validation.",
+      "primary_paths": [
+        "migration-capability-matrix.json",
+        "agent-criticism-map.json",
+        "docs/migration-capability-matrix.md",
+        "docs/agent-criticism-dashboard.md",
+        "tests/capability_matrix.rs",
+        "tests/agent_criticism_map.rs"
+      ]
+    },
+    {
+      "id": "validation",
+      "name": "Validation and oracle tests",
+      "summary": "Smoke tests, ABYSS fail-closed matrix, GnuCOBOL oracle fixtures, fuzzing, Kani, and local verification docs.",
+      "primary_paths": [
+        "tests/converter_smoke.rs",
+        "tests/converter_abyss_matrix.rs",
+        "tests/oracle_gnucobol.rs",
+        "tests/capability_matrix.rs",
+        "fuzz",
+        "kani",
+        "docs/oracle_validation.md",
+        "docs/deep_verification.md",
+        "docs/installation.md"
+      ]
+    },
+    {
+      "id": "security",
+      "name": "Security and red-team material",
+      "summary": "Security posture, scan summaries, and hardening artifacts for CLI, generated paths, runtime config, and dynamic execution.",
+      "primary_paths": [
+        "SECURITY.md",
+        "security-hardening",
+        "docs/security",
+        "docs/agent-criticism-dashboard.md"
+      ]
+    },
+    {
+      "id": "automation-and-release",
+      "name": "Automation, release, and project operations",
+      "summary": "CI workflows, scripts, release notes, contribution rules, and verification entry points.",
+      "primary_paths": [
+        ".github",
+        "scripts",
+        "CHANGELOG.md",
+        "CONTRIBUTING.md",
+        "docs/installation.md"
+      ]
+    }
+  ],
+  "quick_lookup": [
+    {
+      "question": "Is a COBOL feature supported?",
+      "answer_paths": ["migration-capability-matrix.json", "docs/migration-capability-matrix.md"]
+    },
+    {
+      "question": "Which lane should own the next task?",
+      "answer_paths": ["agent-criticism-map.json", "docs/agent-criticism-dashboard.md"]
+    },
+    {
+      "question": "Where do I change parser behavior?",
+      "answer_paths": ["crates/cobol-text", "crates/cobol-source", "crates/cobol-syntax"]
+    },
+    {
+      "question": "Where do I change semantic lowering?",
+      "answer_paths": ["crates/cobol-sema", "crates/cobol-ir"]
+    },
+    {
+      "question": "Where do I change generated execution?",
+      "answer_paths": ["crates/cobol-codegen-rust", "crates/cobol-vm", "crates/cobol-runtime"]
+    },
+    {
+      "question": "Where do I prove COMP-3 behavior?",
+      "answer_paths": ["src/lib.rs", "crates/cobol-record", "tests/cli_smoke.rs", "tests/converter_smoke.rs"]
+    }
+  ],
+  "ignore_for_navigation": [
+    "target",
+    "proptest-regressions",
+    "subprojects"
+  ]
+}

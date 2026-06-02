@@ -1,6 +1,6 @@
 # =========================================================
 # cobol_packed
-# Forensic-grade Rust COMP-3 codec
+# Rust COMP-3 codec, CLI, and COBOL converter workspace
 # =========================================================
 
 # ---------------------------------------------------------
@@ -10,7 +10,8 @@
 /target
 **/*.rs.bk
 
-# Keep Cargo.lock intentionally when binaries/workspaces exist.
+# Keep Cargo.lock intentionally now that this repository contains binaries,
+# workspace crates, examples, and generated-project smoke tests.
 # Cargo.lock
 
 # ---------------------------------------------------------
@@ -32,6 +33,13 @@ tarpaulin-report.html
 *.profdata
 fuzz/artifacts/
 fuzz/corpus/
+
+# ---------------------------------------------------------
+# Python local artifacts
+# ---------------------------------------------------------
+
+__pycache__/
+*.py[cod]
 
 # ---------------------------------------------------------
 # IDE / Editor
@@ -74,3 +82,18 @@ scratch/
 notes/
 book/
 site/
+oracle-evidence/
+deep-evidence/
+deep-verification-evidence/
+supply-chain/
+dist/
+release-artifacts/
+*.tar.gz
+*.zip
+*.sha256
+*.sig
+*.pem
+
+# Internal planning exports from local agent sessions. Keep public roadmap
+# material in migration-capability-matrix.json and agent-criticism-map.json.
+docs/superpowers/
