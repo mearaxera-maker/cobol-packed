@@ -1,0 +1,10 @@
+[package]
+name = "cobol-dialect"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+description = "Dialect profiles for COBOL semantic evaluation"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }

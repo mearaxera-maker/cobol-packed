@@ -1,0 +1,130 @@
+name: Release Candidate Artifacts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  validate:
+    name: Validate workspace before packaging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - run: cargo test --workspace --all-features
+
+  build-artifacts:
+    name: Build release-candidate artifact (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin: cobol-packed
+            converter_bin: cobol2rust
+            archive: cobol-packed-linux-x86_64.tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            bin: cobol-packed
+            converter_bin: cobol2rust
+            archive: cobol-packed-macos-x86_64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: cobol-packed.exe
+            converter_bin: cobol2rust.exe
+            archive: cobol-packed-windows-x86_64.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --features cli,converter --bin cobol-packed --bin cobol2rust --target ${{ matrix.target }}
+      - name: Package Unix artifact
+        if: runner.os != 'Windows'
+        run: |
+          mkdir dist
+          cp target/${{ matrix.target }}/release/${{ matrix.bin }} dist/
+          cp target/${{ matrix.target }}/release/${{ matrix.converter_bin }} dist/
+          cp README.md CHANGELOG.md LICENSE LICENSE-APACHE LICENSE-MIT NOTICE SECURITY.md ENTERPRISE.md dist/
+          mkdir -p dist/docs
+          cp docs/compliance.md docs/packaging.md dist/docs/
+          target/${{ matrix.target }}/release/${{ matrix.bin }} completions bash > dist/cobol-packed.bash
+          target/${{ matrix.target }}/release/${{ matrix.bin }} completions zsh > dist/_cobol-packed
+          target/${{ matrix.target }}/release/${{ matrix.bin }} completions fish > dist/cobol-packed.fish
+          target/${{ matrix.target }}/release/${{ matrix.bin }} man > dist/cobol-packed.1
+          cargo metadata --format-version 1 > dist/SBOM.cargo-metadata.json
+          tar -czf ${{ matrix.archive }} -C dist .
+          shasum -a 256 ${{ matrix.archive }} > ${{ matrix.archive }}.sha256
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/${{ matrix.target }}/release/${{ matrix.bin }} dist/
+          Copy-Item target/${{ matrix.target }}/release/${{ matrix.converter_bin }} dist/
+          Copy-Item README.md,CHANGELOG.md,LICENSE,LICENSE-APACHE,LICENSE-MIT,NOTICE,SECURITY.md,ENTERPRISE.md dist/
+          New-Item -ItemType Directory -Force dist/docs | Out-Null
+          Copy-Item docs/compliance.md,docs/packaging.md dist/docs/
+          & "target/${{ matrix.target }}/release/${{ matrix.bin }}" completions powershell | Set-Content dist/cobol-packed.ps1
+          & "target/${{ matrix.target }}/release/${{ matrix.bin }}" man | Set-Content dist/cobol-packed.1
+          cargo metadata --format-version 1 | Set-Content dist/SBOM.cargo-metadata.json
+          Compress-Archive -Path dist/* -DestinationPath ${{ matrix.archive }}
+          Get-FileHash ${{ matrix.archive }} -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  ${{ matrix.archive }}" } | Set-Content ${{ matrix.archive }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256
+
+  release-smoke:
+    name: Release-candidate artifact smoke test
+    runs-on: ubuntu-latest
+    needs: build-artifacts
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - name: Smoke test Linux binary artifact
+        run: |
+          mkdir smoke
+          tar -xzf release-artifacts/cobol-packed-linux-x86_64.tar.gz/cobol-packed-linux-x86_64.tar.gz -C smoke
+          smoke/cobol-packed decode --digits 4 --scale 2 --signed --hex 01234C
+          smoke/cobol2rust --help
+          cat > smoke/schema.json <<'JSON'
+          {
+            "version": 1,
+            "record_length": 3,
+            "input_encoding": "binary",
+            "on_error": "emit-error-row",
+            "fields": [{
+              "name": "amount",
+              "offset": 0,
+              "length": 3,
+              "total_digits": 4,
+              "scale": 2,
+              "signed": true,
+              "sign_mode": "pfd",
+              "mode": "lossless"
+            }]
+          }
+          JSON
+          printf '\x01\x23\x4C' > smoke/records.bin
+          smoke/cobol-packed schema check --schema smoke/schema.json --output json
+          smoke/cobol-packed batch decode --schema smoke/schema.json --input smoke/records.bin --output jsonl
+          smoke/cobol-packed batch verify --schema smoke/schema.json --input smoke/records.bin --output audit

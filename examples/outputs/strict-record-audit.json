@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "tool": "cobol-packed",
+  "command": "batch verify",
+  "evidence_mode": "minimal",
+  "verification_scope": "record",
+  "status": "passed",
+  "field_byte_for_byte_verified": true,
+  "record_byte_for_byte_verified": true,
+  "byte_for_byte_verified": true,
+  "record_coverage": {
+    "record_length": 4,
+    "covered_bytes": 4,
+    "gap_bytes": 0,
+    "full_coverage": true,
+    "overlap_count": 0
+  }
+}

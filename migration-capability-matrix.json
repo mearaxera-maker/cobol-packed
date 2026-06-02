@@ -1,0 +1,1001 @@
+{
+  "schema_version": 1,
+  "status_values": ["supported", "partial", "blocked", "unknown"],
+  "status_definitions": {
+    "supported": "Executable or validated for the documented subset, with regression evidence.",
+    "partial": "Some forms are executable or validated, but important COBOL forms remain blocked or under-tested.",
+    "blocked": "Detected and rejected before generated Rust is emitted, or intentionally unavailable.",
+    "unknown": "Not yet assessed with enough source, semantic, runtime, or oracle evidence."
+  },
+  "policy": {
+    "canonical": true,
+    "granularity": "Feature groups tracked by the converter, VM, record tooling, and ABYSS hazard matrix. This is not a clause-by-clause ISO certification list.",
+    "docs_must_reference": "docs/migration-capability-matrix.md"
+  },
+  "features": [
+    {
+      "id": "source.fixed",
+      "category": "source",
+      "name": "Fixed source format",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-source/src/lib.rs"],
+      "notes": "Basic fixed normalization is covered; fixed continuation and copybook edge cases remain risk areas."
+    },
+    {
+      "id": "source.free",
+      "category": "source",
+      "name": "Free source format",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-source/src/lib.rs"],
+      "notes": "Used by the converter smoke and oracle suites for supported procedure subsets."
+    },
+    {
+      "id": "source.auto",
+      "category": "source",
+      "name": "Automatic source-format detection",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs::cobol2rust_auto_source_format_accepts_indented_free_format"],
+      "notes": "Recognizes free-format directives and indented free-form division headers; still not a substitute for explicit source format in migration runs."
+    },
+    {
+      "id": "copy.local",
+      "category": "source",
+      "name": "Local COPY expansion",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Local copybooks with recursion/depth limits are supported for the covered subset."
+    },
+    {
+      "id": "copy.replacing",
+      "category": "source",
+      "name": "COPY REPLACING pseudo-text pairs",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Simple pseudo-text replacement outside literals is supported; complex compiler semantics remain partial."
+    },
+    {
+      "id": "copy.fixed-continuation",
+      "category": "source",
+      "name": "Fixed-format COPY continuation",
+      "status": "partial",
+      "evidence": ["tests/oracle_gnucobol.rs", "docs/oracle_validation.md"],
+      "notes": "Needs stronger oracle coverage for literal and pseudo-text continuation."
+    },
+    {
+      "id": "copy.nested-directives",
+      "category": "source",
+      "name": "Nested COPY directives and full compiler COPY semantics",
+      "status": "blocked",
+      "evidence": ["docs/feature-map.md"],
+      "notes": "Full copybook compiler semantics are outside the current importer/converter subset."
+    },
+    {
+      "id": "syntax.program-structure",
+      "category": "syntax",
+      "name": "IDENTIFICATION / ENVIRONMENT / DATA / PROCEDURE divisions",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-syntax/src/lib.rs"],
+      "notes": "Common division/section shapes are parsed; malformed non-program input and grammar completeness remain audit targets."
+    },
+    {
+      "id": "syntax.sentence-scope",
+      "category": "syntax",
+      "name": "Sentence and period scope",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-syntax/src/lib.rs", "crates/cobol-sema/src/lib.rs"],
+      "notes": "Token-slice typed imperative-list parsing is used for supported top-level procedure sentences and scoped file, sort, text, size-error, EVALUATE, and SEARCH branches. Procedure CFG report blocks preserve COBOL sentence/period scope and record NEXT SENTENCE targets; generated execution and remaining period-scope edge cases stay blocked."
+    },
+    {
+      "id": "syntax.nested-imperative-lists",
+      "category": "syntax",
+      "name": "Nested imperative statement lists",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-sema/src/lib.rs"],
+      "notes": "Supported in selected IF, file, sort, text, COMPUTE size-error, EVALUATE, and SEARCH branches using spanned token slices rather than raw statement reparsing. Typed file I/O lowering no longer has legacy raw semantic IR variants; broader grammar gaps remain partial."
+    },
+    {
+      "id": "data.working-storage",
+      "category": "data",
+      "name": "WORKING-STORAGE SECTION",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-sema/src/lib.rs"],
+      "notes": "Byte-backed storage is generated for supported data categories."
+    },
+    {
+      "id": "data.local-storage",
+      "category": "data",
+      "name": "LOCAL-STORAGE SECTION",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-sema/src/lib.rs"],
+      "notes": "Lifecycle coverage exists for multi-program cases, but area-scoped layout remains a sensitive surface."
+    },
+    {
+      "id": "data.linkage",
+      "category": "data",
+      "name": "LINKAGE SECTION",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Structural linkage for linked CALL targets is supported; byte-compatible arbitrary linkage is not complete."
+    },
+    {
+      "id": "data.file-section-fd",
+      "category": "data",
+      "name": "FD record areas",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Fixed-length sequential record areas are supported; variable-length and ODO FD records remain blocked."
+    },
+    {
+      "id": "data.file-section-sd",
+      "category": "data",
+      "name": "SD sort record areas",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Fixed-length SD records are supported for procedure-based in-memory SORT."
+    },
+    {
+      "id": "data.group-items",
+      "category": "data",
+      "name": "Group items",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-sema/src/lib.rs"],
+      "notes": "Group layout and group moves are supported for covered storage shapes."
+    },
+    {
+      "id": "data.elementary-pic",
+      "category": "data",
+      "name": "Elementary PICTURE clauses",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-sema/src/lib.rs", "crates/cobol-record/src/lib.rs"],
+      "notes": "Common PIC X/9/S/V forms are supported; edited, national, DBCS, and dialect edge cases remain partial or blocked."
+    },
+    {
+      "id": "data.filler",
+      "category": "data",
+      "name": "FILLER items",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Repeated FILLER storage is modeled."
+    },
+    {
+      "id": "data.value",
+      "category": "data",
+      "name": "VALUE initialization",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-sema/src/lib.rs"],
+      "notes": "Scalar initialization is covered; VALUE ranges, edited values, and dialect-sensitive initialization remain partial."
+    },
+    {
+      "id": "data.level-66-renames",
+      "category": "data",
+      "name": "Level 66 RENAMES",
+      "status": "blocked",
+      "evidence": ["crates/cobol-sema/src/lib.rs", "tests/converter_abyss_matrix.rs", "docs/converter.md"],
+      "notes": "RENAMES remains blocked for converter execution."
+    },
+    {
+      "id": "data.level-77",
+      "category": "data",
+      "name": "Level 77 items",
+      "status": "unknown",
+      "evidence": ["COBOL_SEMANTIC_GAP_REPORT.md"],
+      "notes": "Needs explicit parser/sema/runtime coverage."
+    },
+    {
+      "id": "data.level-78",
+      "category": "data",
+      "name": "Level 78 constants",
+      "status": "unknown",
+      "evidence": ["COBOL_SEMANTIC_GAP_REPORT.md"],
+      "notes": "Audited as a gap; no migration-capable status yet."
+    },
+    {
+      "id": "data.level-88",
+      "category": "data",
+      "name": "Level 88 condition names",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Condition-name IF and SET are covered for scalar views; complex ranges and aliases need more oracle tests."
+    },
+    {
+      "id": "data.occurs-fixed",
+      "category": "data",
+      "name": "Fixed OCCURS tables",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Subscripts, indexes, and SEARCH use supported table metadata; all nested/dialect cases are not complete."
+    },
+    {
+      "id": "data.occurs-depending-on",
+      "category": "data",
+      "name": "OCCURS DEPENDING ON",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/feature-map.md"],
+      "notes": "Binary record tooling and selected VM ODO paths are covered; FD ODO and some dynamic layout references block."
+    },
+    {
+      "id": "data.redefines",
+      "category": "data",
+      "name": "REDEFINES overlays",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/feature-map.md"],
+      "notes": "Record tooling and scoped metadata exist; procedure references through ambiguous overlays remain guarded or blocked."
+    },
+    {
+      "id": "data.same-record-area",
+      "category": "data",
+      "name": "SAME RECORD AREA",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Selected shared record area behavior is executable; full inter-file and SD aliasing chaos needs more oracle coverage."
+    },
+    {
+      "id": "data.global-common",
+      "category": "data",
+      "name": "GLOBAL and COMMON data",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/converter_abyss_matrix.rs"],
+      "notes": "COMMON program lifecycle exists; GLOBAL data clauses are blocked in ABYSS fixtures."
+    },
+    {
+      "id": "data.external",
+      "category": "data",
+      "name": "EXTERNAL storage",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Shared EXTERNAL storage is covered for linked generated programs."
+    },
+    {
+      "id": "usage.display-alphanumeric",
+      "category": "usage",
+      "name": "DISPLAY alphanumeric",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-vm/src/lib.rs"],
+      "notes": "Byte-backed alphanumeric moves and DISPLAY are covered."
+    },
+    {
+      "id": "usage.display-numeric",
+      "category": "usage",
+      "name": "DISPLAY numeric",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-vm/src/lib.rs"],
+      "notes": "Common display numeric paths are supported; implied scale, overpunch, invalid numeric policy, and EBCDIC zoned cases require more work."
+    },
+    {
+      "id": "usage.comp",
+      "category": "usage",
+      "name": "BINARY / COMP / COMP-4",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-record/src/lib.rs"],
+      "notes": "Record codecs and generated accessors exist; dialect-specific width/endian/truncation policy remains partial."
+    },
+    {
+      "id": "usage.comp-3",
+      "category": "usage",
+      "name": "COMP-3 packed decimal",
+      "status": "supported",
+      "evidence": ["tests/cli_smoke.rs", "tests/converter_smoke.rs", "docs/feature-map.md"],
+      "notes": "Core packed decimal codec is mature. Generated programs support fixed scalar COMP-3 decode/display, strict MOVE/COMPUTE writes with size-error protection, and numeric SORT key ordering; broader comparison and dialect invalid-data policy coverage remains narrower."
+    },
+    {
+      "id": "usage.comp-5",
+      "category": "usage",
+      "name": "COMP-5 native binary",
+      "status": "partial",
+      "evidence": ["tests/cli_smoke.rs", "docs/feature-map.md"],
+      "notes": "Schema support exists with explicit endian; COBOL compiler-native behavior needs dialect profiling."
+    },
+    {
+      "id": "usage.float",
+      "category": "usage",
+      "name": "COMP-1 / COMP-2 IBM hexadecimal floats",
+      "status": "partial",
+      "evidence": ["tests/cli_smoke.rs", "docs/feature-map.md"],
+      "notes": "Record codec support exists; generated procedure arithmetic is not complete."
+    },
+    {
+      "id": "usage.national-dbcs",
+      "category": "usage",
+      "name": "NATIONAL and DBCS",
+      "status": "blocked",
+      "evidence": ["docs/converter.md", "crates/cobol-sema/src/lib.rs"],
+      "notes": "Detected as outside the current executable subset."
+    },
+    {
+      "id": "usage.pointer",
+      "category": "usage",
+      "name": "POINTER and PROCEDURE-POINTER",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs", "docs/converter.md"],
+      "notes": "Pointer storage and procedure pointer calls are blocked."
+    },
+    {
+      "id": "clauses.sign-separate",
+      "category": "data-clause",
+      "name": "SIGN IS SEPARATE",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs", "docs/converter.md"],
+      "notes": "Blocked until display numeric codec policy is complete."
+    },
+    {
+      "id": "clauses.justified",
+      "category": "data-clause",
+      "name": "JUSTIFIED",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs", "docs/converter.md"],
+      "notes": "Blocked in executable converter subset."
+    },
+    {
+      "id": "clauses.blank-when-zero",
+      "category": "data-clause",
+      "name": "BLANK WHEN ZERO",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs", "docs/converter.md"],
+      "notes": "Blocked in executable converter subset."
+    },
+    {
+      "id": "clauses.sync",
+      "category": "data-clause",
+      "name": "SYNC alignment",
+      "status": "partial",
+      "evidence": ["docs/feature-map.md", "crates/cobol-record/src/lib.rs"],
+      "notes": "Sequential planning supports alignment slack; dialect-specific layout needs more oracle evidence."
+    },
+    {
+      "id": "file.select",
+      "category": "file",
+      "name": "SELECT file declarations",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "crates/cobol-syntax/src/lib.rs"],
+      "notes": "Common SELECT forms are parsed; OPTIONAL and dynamic clauses need stricter coverage."
+    },
+    {
+      "id": "file.assign-literal",
+      "category": "file",
+      "name": "ASSIGN TO literal",
+      "status": "supported",
+      "evidence": ["crates/cobol-platform/src/lib.rs", "tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Literal ASSIGN fallback, legacy generated file maps, and structured runtime config are supported for fixed sequential files."
+    },
+    {
+      "id": "file.assign-dynamic",
+      "category": "file",
+      "name": "ASSIGN TO identifier",
+      "status": "blocked",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Dynamic ASSIGN is detected and blocks executable generation; runtime platform config does not unlock dynamic ASSIGN."
+    },
+    {
+      "id": "file.status",
+      "category": "file",
+      "name": "FILE STATUS",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/oracle_validation.md"],
+      "notes": "Status binding and common sequential statuses are covered; dialect-specific ranges need oracle expansion."
+    },
+    {
+      "id": "file.organization-sequential",
+      "category": "file",
+      "name": "ORGANIZATION SEQUENTIAL fixed-length files",
+      "status": "partial",
+      "evidence": ["crates/cobol-platform/src/lib.rs", "tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "OS-backed fixed-length sequential files are executable through literal ASSIGN, legacy file maps, or structured runtime config. Runtime config rejects duplicate names, unsupported encodings, and disposition/open-mode mismatches."
+    },
+    {
+      "id": "file.organization-line-sequential",
+      "category": "file",
+      "name": "LINE SEQUENTIAL files",
+      "status": "blocked",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Detected and blocked; structured runtime config is limited to fixed-length sequential records."
+    },
+    {
+      "id": "file.organization-indexed",
+      "category": "file",
+      "name": "INDEXED / VSAM files",
+      "status": "blocked",
+      "evidence": ["crates/cobol-platform/src/lib.rs", "tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Indexed and VSAM configs parse but fail validation; random/dynamic access, START, and key semantics are not implemented."
+    },
+    {
+      "id": "file.organization-relative",
+      "category": "file",
+      "name": "RELATIVE files",
+      "status": "blocked",
+      "evidence": ["crates/cobol-platform/src/lib.rs", "docs/converter.md"],
+      "notes": "Relative configs parse but fail validation; relative organization remains outside the current subset."
+    },
+    {
+      "id": "file.open-close",
+      "category": "file",
+      "name": "OPEN and CLOSE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Input/output/extend coverage uses typed procedure AST lowering; I-O and platform-specific modes remain narrower."
+    },
+    {
+      "id": "file.read",
+      "category": "file",
+      "name": "READ with AT END / NOT AT END",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Sequential fixed-length READ and typed AT END / NOT AT END / ON EXCEPTION branch bodies are covered. Legacy raw READ semantic IR has been removed."
+    },
+    {
+      "id": "file.write",
+      "category": "file",
+      "name": "WRITE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Fixed sequential WRITE uses typed procedure AST lowering; printer/report control behavior remains partial."
+    },
+    {
+      "id": "file.rewrite",
+      "category": "file",
+      "name": "REWRITE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Implemented for current fixed sequential mutation slice with typed INVALID KEY / NOT INVALID KEY branches. Legacy raw REWRITE semantic IR has been removed; last-record edge cases need more oracle coverage."
+    },
+    {
+      "id": "file.delete",
+      "category": "file",
+      "name": "DELETE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Implemented for current file mutation slice with typed INVALID KEY / NOT INVALID KEY branches. Legacy raw DELETE semantic IR has been removed; repeated delete behavior needs more oracle coverage."
+    },
+    {
+      "id": "file.start",
+      "category": "file",
+      "name": "START",
+      "status": "blocked",
+      "evidence": ["docs/converter.md"],
+      "notes": "START requires indexed/relative access support."
+    },
+    {
+      "id": "file.invalid-key",
+      "category": "file",
+      "name": "INVALID KEY / NOT INVALID KEY",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Current mutation slice supports statement-specific branches for covered file operations."
+    },
+    {
+      "id": "file.rerun",
+      "category": "file",
+      "name": "RERUN checkpoint/restart",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/converter_abyss_matrix.rs", "docs/converter.md"],
+      "notes": "A narrow `RERUN ON file EVERY n RECORDS OF file` checkpoint snapshot slice exists; unsupported RERUN shapes remain fail-closed."
+    },
+    {
+      "id": "file.tape",
+      "category": "file",
+      "name": "Tape files and EXTEND tape behavior",
+      "status": "partial",
+      "evidence": ["docs/converter.md", "tests/converter_smoke.rs"],
+      "notes": "A narrow tape checkpoint backend exists; full tape positioning, EXTEND, parity, and platform behavior remain blocked."
+    },
+    {
+      "id": "file.linage-printer",
+      "category": "file",
+      "name": "LINAGE, report/printer controls, ADVANCING PAGE/LINES",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "COBOL_SEMANTIC_GAP_REPORT.md"],
+      "notes": "Selected LINAGE and ADVANCING output bytes are covered; report writer, carriage control tape, and full printer semantics remain blocked."
+    },
+    {
+      "id": "procedure.display",
+      "category": "procedure",
+      "name": "DISPLAY",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Core observable output path is executable."
+    },
+    {
+      "id": "procedure.accept",
+      "category": "procedure",
+      "name": "ACCEPT",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "ACCEPT is still blocked for executable conversion."
+    },
+    {
+      "id": "procedure.move",
+      "category": "procedure",
+      "name": "MOVE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Supported for covered storage categories; figurative constants and dialect numeric/editing cases remain partial."
+    },
+    {
+      "id": "procedure.move-corresponding",
+      "category": "procedure",
+      "name": "MOVE CORRESPONDING",
+      "status": "blocked",
+      "evidence": ["tests/converter_smoke.rs", "tests/converter_abyss_matrix.rs"],
+      "notes": "Blocked instead of silently emitting fallback moves."
+    },
+    {
+      "id": "procedure.arithmetic-basic",
+      "category": "procedure",
+      "name": "ADD / SUBTRACT / MULTIPLY / DIVIDE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Basic decimal arithmetic is executable for covered categories."
+    },
+    {
+      "id": "procedure.compute",
+      "category": "procedure",
+      "name": "COMPUTE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Simple expressions and typed size-error branch slices are covered; functions/exponentiation/multiple targets remain blocked."
+    },
+    {
+      "id": "procedure.size-error",
+      "category": "procedure",
+      "name": "ON SIZE ERROR / NOT ON SIZE ERROR",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Typed branch bodies are covered for current arithmetic; STRING/UNSTRING overflow branches use the same typed imperative-list path."
+    },
+    {
+      "id": "procedure.rounded",
+      "category": "procedure",
+      "name": "ROUNDED",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "ROUNDED remains blocked in arithmetic lowering."
+    },
+    {
+      "id": "procedure.if",
+      "category": "procedure",
+      "name": "IF / ELSE / END-IF",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Condition IR covers common relations/classes/sign tests; all nested/abbreviated edge cases remain partial."
+    },
+    {
+      "id": "procedure.evaluate",
+      "category": "procedure",
+      "name": "EVALUATE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Selected subjects, WHEN/WHEN OTHER arms, ALSO patterns, and typed arm statement lists are covered; complex subject and pattern grammar needs more coverage."
+    },
+    {
+      "id": "procedure.next-sentence",
+      "category": "procedure",
+      "name": "NEXT SENTENCE",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs", "docs/converter.md"],
+      "notes": "CFG targets are modeled in this slice, including nested conditional occurrences, but execution remains fail-closed; codegen invariants prevent generated Noop fallback until VM lowering has complete period-scope semantics."
+    },
+    {
+      "id": "procedure.perform",
+      "category": "procedure",
+      "name": "PERFORM paragraph/range/times/until",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Common PERFORM forms are executable; complex VARYING AFTER forms remain blocked."
+    },
+    {
+      "id": "procedure.perform-varying-after",
+      "category": "procedure",
+      "name": "PERFORM VARYING ... AFTER",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs", "tests/converter_smoke.rs"],
+      "notes": "Nested varying-after loop shape is blocked."
+    },
+    {
+      "id": "procedure.goto",
+      "category": "procedure",
+      "name": "GO TO",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Static paragraph GO TO is executable."
+    },
+    {
+      "id": "procedure.goto-depending",
+      "category": "procedure",
+      "name": "GO TO DEPENDING ON",
+      "status": "supported",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Computed paragraph dispatch is covered in smoke and oracle tests."
+    },
+    {
+      "id": "procedure.alter",
+      "category": "procedure",
+      "name": "ALTER",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Current VM supports ALTER in the paragraph-resolution model; overlay-aware targets remain future work."
+    },
+    {
+      "id": "procedure.call-static",
+      "category": "procedure",
+      "name": "Static CALL",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Linked multi-program CALL is supported; separately loaded runtime programs are not."
+    },
+    {
+      "id": "procedure.call-dynamic",
+      "category": "procedure",
+      "name": "Dynamic CALL",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Dynamic CALL dispatches among linked generated programs."
+    },
+    {
+      "id": "procedure.call-by-reference",
+      "category": "procedure",
+      "name": "CALL USING BY REFERENCE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Default/reference linkage is covered for current structural layouts."
+    },
+    {
+      "id": "procedure.call-by-content",
+      "category": "procedure",
+      "name": "CALL USING BY CONTENT",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs", "tests/converter_smoke.rs"],
+      "notes": "Blocked until argument conversion and lifecycle semantics are complete."
+    },
+    {
+      "id": "procedure.call-by-value",
+      "category": "procedure",
+      "name": "CALL USING BY VALUE",
+      "status": "blocked",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Blocked in current CALL mode validation."
+    },
+    {
+      "id": "procedure.goback-stop",
+      "category": "procedure",
+      "name": "GOBACK and STOP RUN",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Supported in linked program lifecycle subset."
+    },
+    {
+      "id": "procedure.declaratives-file-error",
+      "category": "procedure",
+      "name": "USE AFTER ERROR ON file",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "File-specific error declaratives are executable for current file runtime events."
+    },
+    {
+      "id": "procedure.declaratives-debugging",
+      "category": "procedure",
+      "name": "USE FOR DEBUGGING",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/converter_abyss_matrix.rs"],
+      "notes": "Debugging declarative slice exists; full DEBUG-ITEM and dialect edge cases remain partial."
+    },
+    {
+      "id": "procedure.ready-reset-trace",
+      "category": "procedure",
+      "name": "READY TRACE / RESET TRACE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/converter_abyss_matrix.rs"],
+      "notes": "Basic trace ops exist; full mainframe trace/debug behavior is not complete."
+    },
+    {
+      "id": "procedure.inspect",
+      "category": "procedure",
+      "name": "INSPECT",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "TALLYING ALL, REPLACING ALL, and CONVERTING slices use typed procedure AST lowering; BEFORE/AFTER, LEADING, FIRST, and mixed complex chains remain blocked."
+    },
+    {
+      "id": "procedure.examine",
+      "category": "procedure",
+      "name": "EXAMINE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "TALLYING ALL and REPLACING ALL slices use typed procedure AST lowering."
+    },
+    {
+      "id": "procedure.string",
+      "category": "procedure",
+      "name": "STRING",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/oracle_gnucobol.rs"],
+      "notes": "Delimited by SIZE, pointer, count, and typed overflow branches exist; complex delimiter chains remain partial."
+    },
+    {
+      "id": "procedure.unstring",
+      "category": "procedure",
+      "name": "UNSTRING",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Core delimiter/target/count and typed overflow branch slices exist; full phrase coverage is partial."
+    },
+    {
+      "id": "procedure.search-serial",
+      "category": "procedure",
+      "name": "SEARCH serial",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Serial SEARCH is executable for supported OCCURS/index forms with typed AT END and WHEN statement lists."
+    },
+    {
+      "id": "procedure.search-all",
+      "category": "procedure",
+      "name": "SEARCH ALL",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Narrow equality/key forms are supported with typed AT END and found statement lists; unsupported forms block."
+    },
+    {
+      "id": "procedure.set-index",
+      "category": "procedure",
+      "name": "SET index",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Index definition and SET for current table access are covered."
+    },
+    {
+      "id": "procedure.sort-procedure",
+      "category": "procedure",
+      "name": "Procedure-based SORT with INPUT/OUTPUT PROCEDURE, RELEASE, RETURN",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "In-memory fixed-length SD, one alphanumeric/numeric-display/COMP-3 key, typed callbacks, RELEASE, RETURN, and nested state stack are supported."
+    },
+    {
+      "id": "procedure.sort-using-giving",
+      "category": "procedure",
+      "name": "SORT USING / GIVING",
+      "status": "blocked",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Physical sort files and external sort utilities are blocked."
+    },
+    {
+      "id": "procedure.merge",
+      "category": "procedure",
+      "name": "MERGE",
+      "status": "blocked",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "MERGE remains blocked."
+    },
+    {
+      "id": "procedure.report-writer",
+      "category": "procedure",
+      "name": "Report writer",
+      "status": "blocked",
+      "evidence": ["docs/converter.md"],
+      "notes": "Report writer is not implemented."
+    },
+    {
+      "id": "procedure.enter-assembler",
+      "category": "procedure",
+      "name": "ENTER assembler/language",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "Inline assembler/language escape is blocked."
+    },
+    {
+      "id": "procedure.exec-sql",
+      "category": "procedure",
+      "name": "EXEC SQL",
+      "status": "blocked",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "EXEC SQL is blocked."
+    },
+    {
+      "id": "procedure.cics-dli",
+      "category": "procedure",
+      "name": "CICS and DLI",
+      "status": "blocked",
+      "evidence": ["docs/converter.md"],
+      "notes": "Online transaction and database runtime integrations are outside scope."
+    },
+    {
+      "id": "conditions.class",
+      "category": "condition",
+      "name": "CLASS conditions",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Intrinsic class tests exist; SPECIAL-NAMES CLASS declarations remain blocked."
+    },
+    {
+      "id": "conditions.sign",
+      "category": "condition",
+      "name": "SIGN conditions",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Basic sign tests exist for supported numeric categories."
+    },
+    {
+      "id": "conditions.abbreviated",
+      "category": "condition",
+      "name": "Abbreviated combined relations",
+      "status": "partial",
+      "evidence": ["docs/converter.md", "tests/converter_smoke.rs"],
+      "notes": "Basic expansion exists; dialect and implicit-subject edges need oracle traces."
+    },
+    {
+      "id": "special-names.decimal-point",
+      "category": "environment",
+      "name": "DECIMAL-POINT IS COMMA",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "Blocked until dialect numeric parsing/rendering is complete."
+    },
+    {
+      "id": "special-names.currency",
+      "category": "environment",
+      "name": "CURRENCY SIGN",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "Blocked."
+    },
+    {
+      "id": "special-names.class",
+      "category": "environment",
+      "name": "SPECIAL-NAMES CLASS declarations",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "Blocked."
+    },
+    {
+      "id": "special-names.channel",
+      "category": "environment",
+      "name": "Printer channel names",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "Blocked with report/printer controls."
+    },
+    {
+      "id": "environment.segment-limit",
+      "category": "environment",
+      "name": "SEGMENT-LIMIT overlays",
+      "status": "blocked",
+      "evidence": ["tests/converter_abyss_matrix.rs"],
+      "notes": "Overlay segment manager is not implemented."
+    },
+    {
+      "id": "environment.debugging-mode",
+      "category": "environment",
+      "name": "WITH DEBUGGING MODE",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "tests/converter_abyss_matrix.rs"],
+      "notes": "Basic debugging declarative/trace support exists; full debugging mode semantics remain partial."
+    },
+    {
+      "id": "figurative.zero-space-quote",
+      "category": "literal",
+      "name": "ZERO, SPACE, QUOTE figurative constants",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs"],
+      "notes": "Common targets are covered; figurative constants should be byte-pattern based across all storage categories."
+    },
+    {
+      "id": "figurative.high-low",
+      "category": "literal",
+      "name": "HIGH-VALUE and LOW-VALUE",
+      "status": "partial",
+      "evidence": ["COBOL_SEMANTIC_GAP_REPORT.md", "crates/cobol-vm/src/lib.rs"],
+      "notes": "Known inconsistency between string and byte representations remains."
+    },
+    {
+      "id": "figurative.all",
+      "category": "literal",
+      "name": "ALL figurative constant",
+      "status": "partial",
+      "evidence": ["docs/converter.md", "tests/converter_smoke.rs"],
+      "notes": "Some text-operation uses exist; full target-length literal semantics remain partial."
+    },
+    {
+      "id": "intrinsic.length",
+      "category": "intrinsic",
+      "name": "FUNCTION LENGTH",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "COBOL_SEMANTIC_GAP_REPORT.md"],
+      "notes": "Supported in selected forms; parser whitespace edge case was audited."
+    },
+    {
+      "id": "intrinsic.ord-numval",
+      "category": "intrinsic",
+      "name": "FUNCTION ORD and NUMVAL",
+      "status": "partial",
+      "evidence": ["crates/cobol-vm/src/lib.rs"],
+      "notes": "Tiny intrinsic registry; codepage semantics are not complete."
+    },
+    {
+      "id": "intrinsic.other",
+      "category": "intrinsic",
+      "name": "Other intrinsic functions",
+      "status": "blocked",
+      "evidence": ["docs/oracle_validation.md"],
+      "notes": "Unsupported functions should fail closed."
+    },
+    {
+      "id": "dialect.ibm",
+      "category": "dialect",
+      "name": "IBM dialect profile",
+      "status": "partial",
+      "evidence": ["tests/converter_smoke.rs", "docs/converter.md"],
+      "notes": "Compiler/runtime profile exists, but many IBM-specific platform semantics remain blocked."
+    },
+    {
+      "id": "dialect.gnucobol",
+      "category": "dialect",
+      "name": "GnuCOBOL dialect profile",
+      "status": "partial",
+      "evidence": ["tests/oracle_gnucobol.rs", "tests/converter_smoke.rs"],
+      "notes": "Oracle suite uses GnuCOBOL for a small behavior slice."
+    },
+    {
+      "id": "dialect.micro-focus-acu",
+      "category": "dialect",
+      "name": "Micro Focus / ACU dialect behavior",
+      "status": "unknown",
+      "evidence": ["COBOL_SEMANTIC_GAP_REPORT.md"],
+      "notes": "Profile coverage is not enough for migration claims."
+    },
+    {
+      "id": "collation.ascii-ebcdic",
+      "category": "dialect",
+      "name": "ASCII/EBCDIC collation",
+      "status": "partial",
+      "evidence": ["crates/cobol-platform/src/lib.rs", "crates/cobol-vm/src/lib.rs", "docs/converter.md"],
+      "notes": "Comparison tables exist in places, but storage bytes, text display, and collation are not fully separated. Runtime config parses EBCDIC intent but fails closed until dataset translation exists."
+    },
+    {
+      "id": "collation.custom",
+      "category": "dialect",
+      "name": "Custom collating sequence",
+      "status": "blocked",
+      "evidence": ["docs/converter.md"],
+      "notes": "Custom collating sequence is not supported."
+    },
+    {
+      "id": "platform.jcl",
+      "category": "platform",
+      "name": "JCL file disposition and job environment",
+      "status": "blocked",
+      "evidence": ["crates/cobol-platform/src/lib.rs", "docs/converter.md"],
+      "notes": "Structured runtime config models file bindings and disposition intent for supported fixed sequential files only; JCL job control remains blocked."
+    },
+    {
+      "id": "platform.record-locking",
+      "category": "platform",
+      "name": "Record locking and concurrent file access",
+      "status": "unknown",
+      "evidence": ["docs/converter.md"],
+      "notes": "Not assessed for migration capability."
+    },
+    {
+      "id": "runtime.checkpoint",
+      "category": "runtime",
+      "name": "Runtime checkpoint/restart snapshot",
+      "status": "blocked",
+      "evidence": ["docs/converter.md", "docs/deep_verification.md"],
+      "notes": "Planned but not implemented as migration-capable RERUN."
+    },
+    {
+      "id": "runtime.dynamic-loading",
+      "category": "runtime",
+      "name": "Separately loaded runtime programs",
+      "status": "blocked",
+      "evidence": ["docs/converter.md"],
+      "notes": "Dynamic calls only dispatch among programs linked into the generated binary."
+    },
+    {
+      "id": "runtime.security-paths",
+      "category": "runtime",
+      "name": "Generated file/path behavior security posture",
+      "status": "partial",
+      "evidence": ["docs/security/generated-runtime-red-team.md"],
+      "notes": "Security pass covers generated path and dynamic runtime behavior; further hardening recommendations remain."
+    }
+  ]
+}

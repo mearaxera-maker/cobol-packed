@@ -1,0 +1,435 @@
+name: Deep Verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Verification profile"
+        required: true
+        default: "rc"
+        type: choice
+        options:
+          - smoke
+          - rc
+          - nightly
+      runs_per_target:
+        description: "Optional libFuzzer -runs override for every fuzz target"
+        required: false
+        default: ""
+      max_total_time:
+        description: "Optional libFuzzer -max_total_time override in seconds"
+        required: false
+        default: ""
+      upload_success_evidence:
+        description: "Upload full success logs, not just summaries"
+        required: true
+        default: false
+        type: boolean
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fuzz-campaigns:
+    name: cargo-fuzz (${{ matrix.target }} / ${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: fuzz_decode
+            variant: scalar
+            features: ""
+            rc_runs: "20000"
+          - target: fuzz_decode
+            variant: simd
+            features: "--features simd"
+            rc_runs: "10000"
+          - target: fuzz_roundtrip
+            variant: scalar
+            features: ""
+            rc_runs: "20000"
+          - target: fuzz_schema_batch
+            variant: scalar
+            features: ""
+            rc_runs: "20000"
+          - target: fuzz_record_codecs
+            variant: scalar
+            features: ""
+            rc_runs: "20000"
+          - target: fuzz_record_codecs
+            variant: simd
+            features: "--features simd"
+            rc_runs: "10000"
+          - target: fuzz_record_layout
+            variant: scalar
+            features: ""
+            rc_runs: "20000"
+          - target: fuzz_source_parser
+            variant: scalar
+            features: ""
+            rc_runs: "20000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz --locked
+      - name: Run campaign
+        id: run_campaign
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          VARIANT: ${{ matrix.variant }}
+          FEATURE_ARGS: ${{ matrix.features }}
+          RC_RUNS: ${{ matrix.rc_runs }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PROFILE: ${{ github.event.inputs.profile }}
+          INPUT_RUNS: ${{ github.event.inputs.runs_per_target }}
+          INPUT_MAX_TIME: ${{ github.event.inputs.max_total_time }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -u
+          mkdir -p "deep-evidence/fuzz-${TARGET}-${VARIANT}"
+
+          PROFILE="${INPUT_PROFILE}"
+          if [ -z "$PROFILE" ]; then
+            if [ "$EVENT_NAME" = "schedule" ]; then
+              PROFILE="nightly"
+            else
+              PROFILE="rc"
+            fi
+          fi
+
+          case "$PROFILE" in
+            smoke)
+              DEFAULT_RUNS="100"
+              DEFAULT_TIME="30"
+              ;;
+            rc)
+              DEFAULT_RUNS="$RC_RUNS"
+              DEFAULT_TIME="300"
+              ;;
+            nightly)
+              DEFAULT_RUNS="100000"
+              DEFAULT_TIME="900"
+              ;;
+            *)
+              echo "unknown profile: $PROFILE" >&2
+              exit 2
+              ;;
+          esac
+
+          RUNS="${INPUT_RUNS:-$DEFAULT_RUNS}"
+          MAX_TIME="${INPUT_MAX_TIME:-$DEFAULT_TIME}"
+          CMD=(cargo fuzz run --sanitizer address)
+          if [ -n "$FEATURE_ARGS" ]; then
+            read -r -a FEATURE_ARRAY <<< "$FEATURE_ARGS"
+            CMD+=("${FEATURE_ARRAY[@]}")
+          fi
+          CMD+=("${TARGET}" -- "-runs=${RUNS}" "-max_total_time=${MAX_TIME}")
+          printf "%q " "${CMD[@]}" > "deep-evidence/fuzz-${TARGET}-${VARIANT}/command.txt"
+          echo >> "deep-evidence/fuzz-${TARGET}-${VARIANT}/command.txt"
+          COMMAND="$(cat "deep-evidence/fuzz-${TARGET}-${VARIANT}/command.txt")"
+          {
+            rustc -Vv
+            cargo -V
+            cargo fuzz --version || true
+          } > "deep-evidence/fuzz-${TARGET}-${VARIANT}/toolchain.txt"
+          set +e
+          "${CMD[@]}" 2>&1 | tee "deep-evidence/fuzz-${TARGET}-${VARIANT}/log.txt"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          export STATUS PROFILE RUNS MAX_TIME COMMAND
+
+          python3 - <<'PY'
+          import json, os, pathlib, time
+          target = os.environ["TARGET"]
+          variant = os.environ["VARIANT"]
+          root = pathlib.Path("deep-evidence") / f"fuzz-{target}-{variant}"
+          status = int(os.environ["STATUS"])
+          summary = {
+              "kind": "fuzz",
+              "target": target,
+              "variant": variant,
+              "features": os.environ["FEATURE_ARGS"],
+              "profile": os.environ["PROFILE"],
+              "runs": int(os.environ["RUNS"]),
+              "max_total_time": int(os.environ["MAX_TIME"]),
+              "command": os.environ["COMMAND"],
+              "sha": os.environ["SHA"],
+              "status": "passed" if status == 0 else "failed",
+              "exit_code": status,
+              "generated_at_unix": int(time.time()),
+          }
+          (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+          (root / "summary.md").write_text(
+              f"# Fuzz {target} ({variant})\n\n"
+              f"- status: {summary['status']}\n"
+              f"- profile: {summary['profile']}\n"
+              f"- command: `{summary['command']}`\n"
+              f"- sha: `{summary['sha']}`\n",
+              encoding="utf-8",
+          )
+          PY
+          exit "$STATUS"
+      - name: Write evidence metadata
+        if: always()
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          VARIANT: ${{ matrix.variant }}
+          FEATURE_ARGS: ${{ matrix.features }}
+          RC_RUNS: ${{ matrix.rc_runs }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PROFILE: ${{ github.event.inputs.profile }}
+          INPUT_RUNS: ${{ github.event.inputs.runs_per_target }}
+          INPUT_MAX_TIME: ${{ github.event.inputs.max_total_time }}
+          SHA: ${{ github.sha }}
+        run: |
+          mkdir -p "deep-evidence/fuzz-${TARGET}-${VARIANT}"
+          if [ ! -f "deep-evidence/fuzz-${TARGET}-${VARIANT}/summary.json" ]; then
+            PROFILE="${INPUT_PROFILE}"
+            if [ -z "$PROFILE" ]; then
+              if [ "$EVENT_NAME" = "schedule" ]; then
+                PROFILE="nightly"
+              else
+                PROFILE="rc"
+              fi
+            fi
+            RUNS="${INPUT_RUNS:-$RC_RUNS}"
+            MAX_TIME="${INPUT_MAX_TIME:-300}"
+            CMD=(cargo fuzz run --sanitizer address)
+            if [ -n "$FEATURE_ARGS" ]; then
+              read -r -a FEATURE_ARRAY <<< "$FEATURE_ARGS"
+              CMD+=("${FEATURE_ARRAY[@]}")
+            fi
+            CMD+=("${TARGET}" -- "-runs=${RUNS}" "-max_total_time=${MAX_TIME}")
+            printf "%q " "${CMD[@]}" > "deep-evidence/fuzz-${TARGET}-${VARIANT}/command.txt"
+            echo >> "deep-evidence/fuzz-${TARGET}-${VARIANT}/command.txt"
+            COMMAND="$(cat "deep-evidence/fuzz-${TARGET}-${VARIANT}/command.txt")"
+            export PROFILE RUNS MAX_TIME COMMAND
+            python3 - <<'PY'
+            import json, os, pathlib, time
+            target = os.environ["TARGET"]
+            variant = os.environ["VARIANT"]
+            root = pathlib.Path("deep-evidence") / f"fuzz-{target}-{variant}"
+            summary = {
+                "kind": "fuzz",
+                "target": target,
+                "variant": variant,
+                "features": os.environ["FEATURE_ARGS"],
+                "profile": os.environ["PROFILE"],
+                "runs": os.environ["RUNS"],
+                "max_total_time": os.environ["MAX_TIME"],
+                "command": os.environ["COMMAND"],
+                "sha": os.environ["SHA"],
+                "status": "setup-failed",
+                "exit_code": None,
+                "generated_at_unix": int(time.time()),
+            }
+            (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+            (root / "summary.md").write_text(f"# Fuzz {target} ({variant})\n\n- status: setup-failed\n", encoding="utf-8")
+            PY
+          fi
+      - name: Upload fuzz crash artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}-${{ matrix.variant }}
+          path: |
+            fuzz/artifacts
+            fuzz/corpus
+          if-no-files-found: ignore
+      - name: Upload fuzz evidence part
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-verification-part-fuzz-${{ matrix.target }}-${{ matrix.variant }}
+          path: deep-evidence/fuzz-${{ matrix.target }}-${{ matrix.variant }}
+          if-no-files-found: ignore
+
+  kani-proofs:
+    name: Kani (${{ matrix.harness }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: proof_no_panic
+            features: kani
+          - harness: proof_no_panic_full_width_decode
+            features: kani
+          - harness: proof_lossless_roundtrip
+            features: kani
+          - harness: proof_scalar_parity
+            features: kani
+          - harness: proof_scalar_simd_agree
+            features: kani,simd
+          - harness: proof_record_binary_no_panic
+            features: kani
+          - harness: proof_record_zoned_no_panic
+            features: kani
+          - harness: proof_record_ibm_float_no_panic
+            features: kani
+    steps:
+      - uses: actions/checkout@v4
+      - uses: model-checking/kani-github-action@v1
+        with:
+          command: cargo-kani
+          args: --version
+      - name: Run proof
+        id: run_proof
+        shell: bash
+        env:
+          HARNESS: ${{ matrix.harness }}
+          FEATURES: ${{ matrix.features }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PROFILE: ${{ github.event.inputs.profile }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -u
+          mkdir -p "deep-evidence/kani-${HARNESS}"
+          PROFILE="${INPUT_PROFILE}"
+          if [ -z "$PROFILE" ]; then
+            if [ "$EVENT_NAME" = "schedule" ]; then
+              PROFILE="nightly"
+            else
+              PROFILE="rc"
+            fi
+          fi
+          CMD=(cargo-kani --features "${FEATURES}" --test kani_proofs --harness "${HARNESS}")
+          printf "%q " "${CMD[@]}" > "deep-evidence/kani-${HARNESS}/command.txt"
+          echo >> "deep-evidence/kani-${HARNESS}/command.txt"
+          COMMAND="$(cat "deep-evidence/kani-${HARNESS}/command.txt")"
+          {
+            rustc -Vv || true
+            cargo -V || true
+            cargo-kani --version || true
+          } > "deep-evidence/kani-${HARNESS}/toolchain.txt"
+          set +e
+          "${CMD[@]}" 2>&1 | tee "deep-evidence/kani-${HARNESS}/log.txt"
+          STATUS=${PIPESTATUS[0]}
+          set -e
+          export STATUS PROFILE COMMAND
+          python3 - <<'PY'
+          import json, os, pathlib, time
+          harness = os.environ["HARNESS"]
+          root = pathlib.Path("deep-evidence") / f"kani-{harness}"
+          status = int(os.environ["STATUS"])
+          summary = {
+              "kind": "kani",
+              "harness": harness,
+              "features": os.environ["FEATURES"],
+              "profile": os.environ["PROFILE"],
+              "command": os.environ["COMMAND"],
+              "sha": os.environ["SHA"],
+              "status": "passed" if status == 0 else "failed",
+              "exit_code": status,
+              "generated_at_unix": int(time.time()),
+          }
+          (root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+          (root / "summary.md").write_text(
+              f"# Kani {harness}\n\n"
+              f"- status: {summary['status']}\n"
+              f"- profile: {summary['profile']}\n"
+              f"- command: `{summary['command']}`\n"
+              f"- sha: `{summary['sha']}`\n",
+              encoding="utf-8",
+          )
+          PY
+          exit "$STATUS"
+      - name: Upload Kani logs
+        if: failure() || github.event.inputs.upload_success_evidence == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kani-logs-${{ matrix.harness }}
+          path: deep-evidence/kani-${{ matrix.harness }}/log.txt
+          if-no-files-found: ignore
+      - name: Upload Kani evidence part
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-verification-part-kani-${{ matrix.harness }}
+          path: deep-evidence/kani-${{ matrix.harness }}
+          if-no-files-found: ignore
+
+  evidence-summary:
+    name: Deep verification evidence
+    runs-on: ubuntu-latest
+    needs: [fuzz-campaigns, kani-proofs]
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: deep-verification-part-*
+          path: evidence-parts
+          merge-multiple: true
+      - name: Build combined evidence
+        shell: bash
+        env:
+          FUZZ_RESULT: ${{ needs.fuzz-campaigns.result }}
+          KANI_RESULT: ${{ needs.kani-proofs.result }}
+          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PROFILE: ${{ github.event.inputs.profile }}
+        run: |
+          mkdir -p deep-verification-evidence
+          python3 - <<'PY'
+          import json, os, pathlib, time
+          parts = []
+          for path in pathlib.Path("evidence-parts").rglob("summary.json"):
+              parts.append(json.loads(path.read_text(encoding="utf-8")))
+          parts.sort(key=lambda item: (item.get("kind", ""), item.get("target", item.get("harness", "")), item.get("variant", "")))
+          profile = os.environ["INPUT_PROFILE"] or ("nightly" if os.environ["EVENT_NAME"] == "schedule" else "rc")
+          overall = {
+              "kind": "deep-verification",
+              "status": "passed" if os.environ["FUZZ_RESULT"] == "success" and os.environ["KANI_RESULT"] == "success" else "failed",
+              "profile": profile,
+              "sha": os.environ["SHA"],
+              "ref": os.environ["REF_NAME"],
+              "event": os.environ["EVENT_NAME"],
+              "fuzz_result": os.environ["FUZZ_RESULT"],
+              "kani_result": os.environ["KANI_RESULT"],
+              "generated_at_unix": int(time.time()),
+              "items": parts,
+          }
+          out = pathlib.Path("deep-verification-evidence")
+          (out / "deep-verification-summary.json").write_text(json.dumps(overall, indent=2) + "\n", encoding="utf-8")
+          lines = [
+              "# Deep Verification Summary",
+              "",
+              f"- status: {overall['status']}",
+              f"- profile: {overall['profile']}",
+              f"- ref: `{overall['ref']}`",
+              f"- sha: `{overall['sha']}`",
+              f"- fuzz result: {overall['fuzz_result']}",
+              f"- Kani result: {overall['kani_result']}",
+              "",
+              "## Items",
+              "",
+          ]
+          for item in parts:
+              name = item.get("target") or item.get("harness")
+              variant = item.get("variant")
+              label = f"{name} ({variant})" if variant else name
+              lines.append(f"- {item.get('kind')}: `{label}` -> {item.get('status')} (`{item.get('command')}`)")
+          (out / "deep-verification-summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+      - name: Upload combined evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-verification-evidence
+          path: deep-verification-evidence
+      - name: Fail if any deep verification job failed
+        shell: bash
+        env:
+          FUZZ_RESULT: ${{ needs.fuzz-campaigns.result }}
+          KANI_RESULT: ${{ needs.kani-proofs.result }}
+        run: |
+          if [ "$FUZZ_RESULT" != "success" ] || [ "$KANI_RESULT" != "success" ]; then
+            echo "Deep verification failed: fuzz=$FUZZ_RESULT kani=$KANI_RESULT" >&2
+            exit 1
+          fi

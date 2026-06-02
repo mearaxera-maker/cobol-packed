@@ -1,0 +1,497 @@
+{
+  "schema_version": 1,
+  "generated_on": "2026-06-01",
+  "canonical": true,
+  "purpose": "Machine-readable maintainer roadmap, review-lane map, readiness estimates, and validation gates for the COBOL converter.",
+  "inputs": [
+    "migration-capability-matrix.json",
+    "docs/converter.md",
+    "docs/oracle_validation.md",
+    "docs/migration-capability-matrix.md"
+  ],
+  "estimate_policy": {
+    "meaning": "Percentages are engineering readiness estimates, not certification claims.",
+    "matrix_weight_model": {
+      "supported": 1.0,
+      "partial": 0.45,
+      "blocked": 0.0,
+      "unknown": 0.0
+    },
+    "current_matrix_score_percent": 35.2,
+    "confidence_levels": ["low", "medium", "high"]
+  },
+  "split_policy": {
+    "default_protocol": "One implementer lane, one spec critic lane, one edge-case critic lane, then final integrator review.",
+    "when_to_split": [
+      {
+        "id": "split.independent-layer",
+        "rule": "Split when tasks touch different compiler/runtime layers and can be validated by separate focused tests."
+      },
+      {
+        "id": "split.oracle-vs-implementation",
+        "rule": "Split oracle/golden-behavior work away from implementation work so the oracle agent is not biased by implementation choices."
+      },
+      {
+        "id": "split.security-runtime",
+        "rule": "Split OS file, dynamic CALL, generated path, and runtime config work into a security/red-team lane."
+      },
+      {
+        "id": "split.codec-vs-codegen",
+        "rule": "Split codec correctness from generated-program integration; packed-decimal core and compiler use of packed fields fail differently."
+      }
+    ],
+    "when_not_to_split": [
+      {
+        "id": "nosplit.shared-parser-invariant",
+        "rule": "Do not let multiple implementers edit the same parser boundary/invariant in parallel."
+      },
+      {
+        "id": "nosplit.cross-cutting-refactor",
+        "rule": "Do not split a refactor that requires one coherent AST/IR contract across syntax, sema, and codegen."
+      }
+    ],
+    "merge_gate": {
+      "required_reviews": ["spec_critic", "edge_case_critic"],
+      "required_evidence": ["focused_tests", "capability_matrix_update", "docs_update"],
+      "forbidden_outcomes": [
+        "unsupported executable statement lowered to VmProcedureOp::Noop",
+        "new partial feature without migration-capability-matrix.json update",
+        "oracle fixture that silently skips when it is meant to be required in CI"
+      ]
+    }
+  },
+  "areas": [
+    {
+      "id": "comp3-core",
+      "name": "COMP-3 packed decimal core",
+      "estimate_percent": { "min": 75, "max": 80 },
+      "confidence": "high",
+      "risk": "medium",
+      "capability_refs": ["usage.comp-3"],
+      "owner_lane": "codec-agent",
+      "critic_lanes": ["oracle-agent", "security-agent"],
+      "criticism": [
+        "Codec maturity is higher than compiler integration maturity.",
+        "Sign-nibble policy, invalid data policy, lossless round trips, and strict precision paths must remain one shared implementation."
+      ],
+      "dashboard_signal": "Strong library core; do not treat this as proof that generated packed-field arithmetic is complete."
+    },
+    {
+      "id": "comp3-generated-programs",
+      "name": "COMP-3 inside generated COBOL programs",
+      "estimate_percent": { "min": 60, "max": 65 },
+      "confidence": "medium",
+      "risk": "high",
+      "capability_refs": ["usage.comp-3", "procedure.compute", "procedure.sort-procedure"],
+      "owner_lane": "codegen-vm-agent",
+      "critic_lanes": ["codec-agent", "oracle-agent"],
+      "criticism": [
+        "Generated accessors and fixed scalar MOVE/COMPUTE writes exist, but comparison, sorting, CALL edge cases, and invalid-data policy need broader oracle coverage.",
+        "COMP-3 SORT keys now decode numerically; binary/native/float SORT keys remain fail-closed and must not silently compare bytewise."
+      ],
+      "dashboard_signal": "Usable for covered access/display/MOVE/COMPUTE shapes; not complete for all packed arithmetic semantics."
+    },
+    {
+      "id": "source-copy-normalization",
+      "name": "Source and COPY normalization",
+      "estimate_percent": { "min": 45, "max": 50 },
+      "confidence": "medium",
+      "risk": "high",
+      "capability_refs": [
+        "source.fixed",
+        "source.free",
+        "source.auto",
+        "copy.local",
+        "copy.replacing",
+        "copy.fixed-continuation",
+        "copy.nested-directives"
+      ],
+      "owner_lane": "source-agent",
+      "critic_lanes": ["syntax-agent", "oracle-agent"],
+      "criticism": [
+        "Source corruption before syntax parsing invalidates every downstream result.",
+        "Fixed continuation, COPY REPLACING, nested directives, and literal preservation need hostile fixtures."
+      ],
+      "dashboard_signal": "Basic use works; migration trust needs a token/source-map-aware preprocessor."
+    },
+    {
+      "id": "syntax-procedure-parsing",
+      "name": "Syntax and procedure parsing",
+      "estimate_percent": { "min": 50, "max": 55 },
+      "confidence": "medium",
+      "risk": "critical",
+      "capability_refs": [
+        "syntax.program-structure",
+        "syntax.nested-imperative-lists",
+        "syntax.sentence-scope",
+        "procedure.next-sentence"
+      ],
+      "owner_lane": "syntax-agent",
+      "critic_lanes": ["sema-ir-agent", "oracle-agent"],
+      "criticism": [
+        "Token-slice nested parsing is a real improvement, but sentence-level control flow is still missing.",
+        "NEXT SENTENCE remains blocked until period-scope CFG exists."
+      ],
+      "dashboard_signal": "Parser is safer than before; still not a full COBOL statement/sentence grammar."
+    },
+    {
+      "id": "sema-ir",
+      "name": "Semantic analysis and IR",
+      "estimate_percent": { "min": 45, "max": 50 },
+      "confidence": "medium",
+      "risk": "critical",
+      "capability_refs": [
+        "data.redefines",
+        "data.file-section-fd",
+        "data.file-section-sd",
+        "data.level-88",
+        "procedure.evaluate",
+        "procedure.search-serial"
+      ],
+      "owner_lane": "sema-ir-agent",
+      "critic_lanes": ["syntax-agent", "codegen-vm-agent"],
+      "criticism": [
+        "The dangerous failures are semantic: aliases, ODO, REDEFINES, RENAMES, category conversion, and control-flow facts.",
+        "IR must keep becoming typed and executable rather than carrying raw COBOL fragments."
+      ],
+      "dashboard_signal": "Good blocking and reference work; aliasing and dynamic layout remain major migration risks."
+    },
+    {
+      "id": "codegen-vm",
+      "name": "Codegen and VM",
+      "estimate_percent": { "min": 45, "max": 50 },
+      "confidence": "medium",
+      "risk": "critical",
+      "capability_refs": [
+        "procedure.alter",
+        "procedure.goto-depending",
+        "procedure.declaratives-file-error",
+        "procedure.ready-reset-trace",
+        "procedure.sort-procedure"
+      ],
+      "owner_lane": "codegen-vm-agent",
+      "critic_lanes": ["sema-ir-agent", "security-agent"],
+      "criticism": [
+        "VM feature count is rising, but platform semantics and checkpoint/overlay interactions are not complete.",
+        "Generated Noop fallbacks must stay limited to explicit CONTINUE and proven zero-field MOVE CORRESPONDING."
+      ],
+      "dashboard_signal": "Strong enough for current subset; not a platform-accurate COBOL runtime yet."
+    },
+    {
+      "id": "file-os-runtime",
+      "name": "File and OS runtime",
+      "estimate_percent": { "min": 25, "max": 35 },
+      "confidence": "medium",
+      "risk": "critical",
+      "capability_refs": [
+        "file.organization-sequential",
+        "file.organization-indexed",
+        "file.organization-relative",
+        "file.organization-line-sequential",
+        "file.status",
+        "file.rerun",
+        "file.tape"
+      ],
+      "owner_lane": "runtime-file-agent",
+      "critic_lanes": ["security-agent", "oracle-agent"],
+      "criticism": [
+        "Fixed sequential is usable, but real migration needs VSAM/indexed/relative/tape/locking/disposition behavior.",
+        "OS file handles, paths, external content, and checkpoint state need security and restart scrutiny."
+      ],
+      "dashboard_signal": "Current runtime is a fixed sequential batch slice, not a mainframe file platform."
+    },
+    {
+      "id": "oracle-validation",
+      "name": "Oracle validation",
+      "estimate_percent": { "min": 20, "max": 25 },
+      "confidence": "high",
+      "risk": "critical",
+      "capability_refs": [
+        "procedure.goto-depending",
+        "procedure.sort-procedure",
+        "file.status",
+        "source.fixed",
+        "usage.comp-3"
+      ],
+      "owner_lane": "oracle-agent",
+      "critic_lanes": ["sema-ir-agent", "codegen-vm-agent"],
+      "criticism": [
+        "Oracle coverage is a seed, not a certification suite.",
+        "Every feature promotion should require observable behavior fixtures, not just generated-code substring checks."
+      ],
+      "dashboard_signal": "Useful for regression confidence; too small for migration trust."
+    },
+    {
+      "id": "abyss-mainframe-compat",
+      "name": "Full mainframe and ABYSS compatibility",
+      "estimate_percent": { "min": 25, "max": 30 },
+      "confidence": "medium",
+      "risk": "critical",
+      "capability_refs": [
+        "procedure.alter",
+        "procedure.declaratives-file-error",
+        "file.rerun",
+        "file.tape",
+        "collation.ascii-ebcdic"
+      ],
+      "owner_lane": "abyss-agent",
+      "critic_lanes": ["runtime-file-agent", "security-agent", "oracle-agent"],
+      "criticism": [
+        "The current VM has pieces of the chaos model, but overlays, tape, robust RERUN, platform collation, and full restart state are missing.",
+        "ABYSS work should be split only after the compiler subset has hard semantic gates."
+      ],
+      "dashboard_signal": "Some ABYSS hazards are modeled; full resurrection is still early-stage."
+    }
+  ],
+  "agent_lanes": [
+    {
+      "id": "source-agent",
+      "name": "Source/COPY Agent",
+      "owns": ["crates/cobol-source", "crates/cobol-text", "source.*", "copy.*"],
+      "must_coordinate_with": ["syntax-agent"],
+      "default_validations": [
+        "cargo test -p cobol-text --lib -- --nocapture",
+        "cargo test --features converter --test converter_smoke -- source --nocapture"
+      ],
+      "forbidden_shortcuts": ["string replacement inside literals", "format auto-detection without fixtures"]
+    },
+    {
+      "id": "syntax-agent",
+      "name": "Syntax/Parser Agent",
+      "owns": ["crates/cobol-syntax", "syntax.*", "procedure.next-sentence"],
+      "must_coordinate_with": ["sema-ir-agent"],
+      "default_validations": [
+        "cargo test -p cobol-syntax --lib -- --nocapture",
+        "cargo test --features converter --test converter_abyss_matrix -- --nocapture"
+      ],
+      "forbidden_shortcuts": ["tokens.join(\" \") reparsing in nested imperative lists", "NEXT SENTENCE lowered as Noop"]
+    },
+    {
+      "id": "sema-ir-agent",
+      "name": "Sema/IR Agent",
+      "owns": ["crates/cobol-sema", "crates/cobol-ir", "data.*", "condition.*"],
+      "must_coordinate_with": ["syntax-agent", "codegen-vm-agent"],
+      "default_validations": [
+        "cargo test -p cobol-sema --lib -- --nocapture",
+        "cargo test --features converter --test converter_smoke -- semantic --nocapture"
+      ],
+      "forbidden_shortcuts": ["raw COBOL strings in executable IR for supported verbs", "unresolved reference accepted into codegen"]
+    },
+    {
+      "id": "codec-agent",
+      "name": "Codec Agent",
+      "owns": ["src/lib.rs", "crates/cobol-record", "usage.comp-3", "usage.comp", "usage.comp-5"],
+      "must_coordinate_with": ["codegen-vm-agent", "oracle-agent"],
+      "default_validations": [
+        "cargo test --features cli --test cli_smoke -- --nocapture",
+        "cargo test -p cobol-record --lib -- --nocapture"
+      ],
+      "forbidden_shortcuts": ["duplicate packed-decimal sign policy", "lossy strict encode path"]
+    },
+    {
+      "id": "codegen-vm-agent",
+      "name": "Codegen/VM Agent",
+      "owns": ["crates/cobol-codegen-rust", "crates/cobol-vm", "procedure.*"],
+      "must_coordinate_with": ["sema-ir-agent", "runtime-file-agent"],
+      "default_validations": [
+        "cargo test -p cobol-codegen-rust --lib -- --nocapture",
+        "cargo test --features converter --test converter_smoke -- --nocapture"
+      ],
+      "forbidden_shortcuts": ["unsupported executable statement lowered as Noop", "VM state mutation without checkpoint consideration"]
+    },
+    {
+      "id": "runtime-file-agent",
+      "name": "Runtime/File Agent",
+      "owns": ["crates/cobol-platform", "crates/cobol-runtime", "file.*", "runtime.*"],
+      "must_coordinate_with": ["security-agent", "oracle-agent"],
+      "default_validations": [
+        "cargo test -p cobol-platform --lib -- --nocapture",
+        "cargo test --features converter --test oracle_gnucobol -- --nocapture"
+      ],
+      "forbidden_shortcuts": ["unchecked external path behavior", "file status behavior without oracle or exact smoke evidence"]
+    },
+    {
+      "id": "oracle-agent",
+      "name": "Oracle Agent",
+      "owns": ["tests/oracle_gnucobol.rs", "docs/oracle_validation.md"],
+      "must_coordinate_with": ["source-agent", "codegen-vm-agent"],
+      "default_validations": [
+        "cargo test --features converter --test oracle_gnucobol -- --nocapture"
+      ],
+      "forbidden_shortcuts": ["substring-only behavior checks", "oracle fixture with no clear observable"]
+    },
+    {
+      "id": "security-agent",
+      "name": "Security/Red-Team Agent",
+      "owns": ["security-hardening", "generated path behavior", "dynamic call behavior", "runtime config inputs"],
+      "must_coordinate_with": ["runtime-file-agent", "codegen-vm-agent"],
+      "default_validations": [
+        "cargo test --features converter --test converter_smoke -- path --nocapture",
+        "cargo test --features cli --test cli_smoke -- --nocapture"
+      ],
+      "forbidden_shortcuts": ["path traversal accepted", "generated file overwrite outside output root", "dynamic call target accepted without explicit binding"]
+    },
+    {
+      "id": "abyss-agent",
+      "name": "ABYSS Hazard Agent",
+      "owns": ["tests/converter_abyss_matrix.rs", "ABYSS hazard fixtures"],
+      "must_coordinate_with": ["syntax-agent", "codegen-vm-agent", "runtime-file-agent"],
+      "default_validations": [
+        "cargo test --features converter --test converter_abyss_matrix -- --nocapture"
+      ],
+      "forbidden_shortcuts": ["combined hazard fixture that hides accepted hazards", "fail-closed assertion by substring only"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "sentence-cfg-v1",
+      "title": "Implement sentence CFG and real NEXT SENTENCE semantics",
+      "status": "ready",
+      "priority": 1,
+      "risk": "critical",
+      "area": "syntax-procedure-parsing",
+      "owner_lane": "syntax-agent",
+      "critic_lanes": ["sema-ir-agent", "oracle-agent"],
+      "capability_refs": ["syntax.sentence-scope", "procedure.next-sentence"],
+      "split_decision": "solo_core_with_parallel_oracle",
+      "split_when": [
+        "Parser/CFG implementation remains in syntax-agent.",
+        "Oracle-agent can independently build behavior fixtures for period-scope and NEXT SENTENCE.",
+        "Sema/codegen changes start only after syntax AST contract is reviewed."
+      ],
+      "acceptance": [
+        "NEXT SENTENCE no longer reaches codegen as unsupported for supported sentence shapes.",
+        "Period-scope control flow has exact fixtures.",
+        "Existing token-slice nested branch tests remain green."
+      ],
+      "validation_commands": [
+        "cargo test -p cobol-syntax --lib -- --nocapture",
+        "cargo test -p cobol-sema --lib -- --nocapture",
+        "cargo test --features converter --test oracle_gnucobol -- --nocapture"
+      ]
+    },
+    {
+      "id": "packed-program-arithmetic-v1",
+      "title": "Broaden generated-program packed decimal arithmetic and comparisons",
+      "status": "ready",
+      "priority": 2,
+      "risk": "high",
+      "area": "comp3-generated-programs",
+      "owner_lane": "codegen-vm-agent",
+      "critic_lanes": ["codec-agent", "oracle-agent"],
+      "capability_refs": ["usage.comp-3", "procedure.compute"],
+      "split_decision": "parallel_safe",
+      "split_when": [
+        "Codec-agent owns core policy tests.",
+        "Codegen-vm-agent owns generated program integration.",
+        "Oracle-agent owns observable COBOL arithmetic fixtures."
+      ],
+      "acceptance": [
+        "Packed field arithmetic uses shared codec policy.",
+        "Invalid packed data has an explicit runtime policy.",
+        "Generated programs have exact oracle fixtures for signed, scaled, and overflow cases."
+      ],
+      "validation_commands": [
+        "cargo test --features cli --test cli_smoke -- --nocapture",
+        "cargo test --features converter --test converter_smoke -- packed --nocapture",
+        "cargo test --features converter --test oracle_gnucobol -- --nocapture"
+      ]
+    },
+    {
+      "id": "preprocessor-source-map-v1",
+      "title": "Build token/source-map-aware fixed/COPY preprocessor",
+      "status": "ready",
+      "priority": 3,
+      "risk": "critical",
+      "area": "source-copy-normalization",
+      "owner_lane": "source-agent",
+      "critic_lanes": ["syntax-agent", "oracle-agent"],
+      "capability_refs": [
+        "source.fixed",
+        "source.auto",
+        "copy.replacing",
+        "copy.fixed-continuation",
+        "copy.nested-directives"
+      ],
+      "split_decision": "solo_core_with_parallel_fixtures",
+      "split_when": [
+        "Source-agent owns normalization internals.",
+        "Oracle-agent can independently add fixed/COPY fixtures.",
+        "Syntax-agent reviews token boundary invariants."
+      ],
+      "acceptance": [
+        "Fixed continuation and COPY REPLACING preserve literal boundaries.",
+        "Diagnostics retain enough normalized-source context for migration reports.",
+        "Free/fixed auto detection remains explicit-risk documented."
+      ],
+      "validation_commands": [
+        "cargo test -p cobol-text --lib -- --nocapture",
+        "cargo test --features converter --test converter_smoke -- copy --nocapture",
+        "cargo test --features converter --test oracle_gnucobol -- --nocapture"
+      ]
+    },
+    {
+      "id": "file-runtime-platform-v1",
+      "title": "Harden OS file/runtime platform behavior",
+      "status": "ready",
+      "priority": 4,
+      "risk": "critical",
+      "area": "file-os-runtime",
+      "owner_lane": "runtime-file-agent",
+      "critic_lanes": ["security-agent", "oracle-agent"],
+      "capability_refs": [
+        "file.organization-sequential",
+        "file.status",
+        "file.rerun",
+        "file.tape",
+        "file.organization-indexed",
+        "file.organization-relative"
+      ],
+      "split_decision": "parallel_safe",
+      "split_when": [
+        "Runtime-file-agent owns normal behavior.",
+        "Security-agent owns path/config misuse and generated output safety.",
+        "Oracle-agent owns observable file status fixtures."
+      ],
+      "acceptance": [
+        "OS file status behavior has exact tests.",
+        "Runtime config rejects unsafe or unsupported mappings predictably.",
+        "Checkpoint/file cursor behavior has an explicit documented policy."
+      ],
+      "validation_commands": [
+        "cargo test -p cobol-platform --lib -- --nocapture",
+        "cargo test --features converter --test converter_smoke -- file --nocapture",
+        "cargo test --features converter --test oracle_gnucobol -- --nocapture"
+      ]
+    },
+    {
+      "id": "abyss-matrix-one-hazard-fixtures",
+      "title": "Refactor ABYSS matrix to one hazard per fixture with exact diagnostics",
+      "status": "ready",
+      "priority": 5,
+      "risk": "high",
+      "area": "abyss-mainframe-compat",
+      "owner_lane": "abyss-agent",
+      "critic_lanes": ["syntax-agent", "codegen-vm-agent"],
+      "capability_refs": [
+        "procedure.alter",
+        "procedure.declaratives-file-error",
+        "procedure.sort-procedure"
+      ],
+      "split_decision": "solo_test_harness",
+      "split_when": [
+        "Abyss-agent owns fixture decomposition.",
+        "Syntax/codegen critics verify that accepted hazards are not hidden behind unrelated blockers."
+      ],
+      "acceptance": [
+        "Each ABYSS fixture declares exactly one primary hazard.",
+        "Diagnostics are asserted structurally, not by loose substring only.",
+        "Supported hazards have exact smoke or oracle coverage."
+      ],
+      "validation_commands": [
+        "cargo test --features converter --test converter_abyss_matrix -- --nocapture",
+        "cargo test --features converter --test capability_matrix -- --nocapture"
+      ]
+    }
+  ]
+}

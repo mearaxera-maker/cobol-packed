@@ -1,0 +1,57 @@
+[package]
+name = "cobol-packed-fuzz"
+version = "0.0.1"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[features]
+simd = ["cobol_packed/simd"]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+cobol_packed = { path = ".." }
+cobol-record = { path = "../crates/cobol-record" }
+cobol-source = { path = "../crates/cobol-source" }
+cobol-syntax = { path = "../crates/cobol-syntax" }
+rust_decimal = "1.36"
+
+[[bin]]
+name = "fuzz_decode"
+path = "fuzz_targets/fuzz_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_roundtrip"
+path = "fuzz_targets/fuzz_roundtrip.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_schema_batch"
+path = "fuzz_targets/fuzz_schema_batch.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_record_codecs"
+path = "fuzz_targets/fuzz_record_codecs.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_record_layout"
+path = "fuzz_targets/fuzz_record_layout.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_source_parser"
+path = "fuzz_targets/fuzz_source_parser.rs"
+test = false
+doc = false
