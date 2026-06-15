@@ -1,0 +1,50 @@
+[package]
+name = "cobol_packed"
+version = "0.6.1"
+edition = "2021"
+rust-version = "1.70"
+description = "IBM Enterprise COBOL COMP-3 packed decimal codec with scalar reference decoding, const-generic, and lossless forensic modes"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mearaxera-maker/cobol-packed"
+homepage = "https://github.com/mearaxera-maker/cobol-packed"
+documentation = "https://docs.rs/cobol_packed"
+readme = "README.md"
+keywords = ["cobol", "packed-decimal", "comp-3", "mainframe", "bcd"]
+categories = ["encoding", "parser-implementations", "finance"]
+exclude = ["fuzz/", "kani/", ".github/"]
+
+[workspace]
+
+[features]
+default = []
+# Enable SIMD nibble-expansion validation (AVX2/SSE2 on x86_64).
+# When enabled the SIMD nibble expander is compiled and validated against the
+# scalar reference; decoding still uses the scalar reference path.
+simd = []
+# Opt-in to AVX2 specifically. Requires simd feature and a target with avx2.
+avx2 = ["simd"]
+# Enable the nightly Kani proof harness.  Only useful when running `cargo kani`.
+kani = []
+
+[dependencies]
+rust_decimal = "1.36"
+thiserror = "2.0"
+
+[dev-dependencies]
+proptest = "1.5"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "packed_bench"
+harness = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[profile.bench]
+inherits = "release"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

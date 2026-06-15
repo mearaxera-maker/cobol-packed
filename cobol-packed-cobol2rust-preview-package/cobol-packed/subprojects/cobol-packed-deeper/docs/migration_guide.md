@@ -1,0 +1,118 @@
+# Migration Guide: v0.6 → v1.0
+
+This guide covers every breaking change introduced in `cobol_packed` v1.0
+and provides a mechanical upgrade path for each one.
+
+---
+
+## Breaking Changes
+
+### 1. `PackedPolicy` is now required for lossless APIs
+
+**Before (v0.6):**
+```rust
+let decoded = from_packed_lossless(&bytes, &cfg, SignMode::Nopfd)?;
+let repacked = to_packed_lossless(&decoded, &cfg)?;
+```
+
+**After (v1.0):**
+```rust
+use cobol_packed::{PackedPolicy, SignMode};
+
+let policy = PackedPolicy::lossless(SignMode::Nopfd);
+let decoded = from_packed_lossless_with_policy(&bytes, &cfg, policy)?;
+let repacked = to_packed_lossless_with_policy(&decoded, &cfg, policy)?;
+
+// Or use the shorthand helpers which infer the canonical policy:
+let decoded = from_packed_lossless(&bytes, &cfg, SignMode::Nopfd)?;
+```
+
+The bare `SignMode` signatures are retained as convenience wrappers
+over `PackedPolicy::lossless(sign_mode)`. No code changes are required
+unless you need explicit `ZeroSignPolicy` control.
+
+### 2. `Packed<D, S, SIGNED>::len()` is deprecated in favor of `LEN`
+
+**Before (v0.6):**
+```rust
+let n = Packed::<18, 2, true>::len();
+```
+
+**After (v1.0):**
+```rust
+let n = Packed::<18, 2, true>::LEN; // associated constant
+```
+
+The deprecated `len()` method is still present for compatibility, but new code
+should use `LEN`. `LEN` is a `const`, so it can be used in array sizes:
+```rust
+let mut buf = [0u8; Packed::<18, 2, true>::LEN];
+```
+
+### 3. `simd_matches_scalar` is available when the `simd` feature is enabled
+
+**Before (v0.6):**
+```rust
+use cobol_packed::simd_matches_scalar;
+```
+
+**After (v1.0):**
+```rust
+use cobol_packed::simd_matches_scalar; // available when feature `simd` is enabled
+```
+
+### 4. `PackedConfig::new` validation tightened for `scale > 18`
+
+In v0.6 configs with `scale` between 19 and 28 were accepted even though
+`rust_decimal` silently clamped them.  In v1.0 the accepted range is
+`0..=min(total_digits, 18)`.  Configs with larger scale values now return
+`Err(PackedError::ScaleTooLargeForDecimal)`.
+
+---
+
+## New in v1.0
+
+### `PackedConfig` convenience methods
+
+```rust
+let cfg = PackedConfig::signed(12, 2)?;
+println!("max: {}", cfg.max_value());   // 9999999999.99
+println!("min: {}", cfg.min_value());   // -9999999999.99 (signed only)
+println!("len: {}", cfg.byte_len());    // 7
+```
+
+### Stack-only encode into `[u8; N]`
+
+```rust
+let mut buf = [0u8; Packed::<6, 2, true>::LEN];
+Packed::<6, 2, true>::encode_into(&value, &mut buf)?;
+// No heap allocation.
+```
+
+### `NibbleIter` — zero-allocation nibble streaming
+
+```rust
+use cobol_packed::nibble_iter;
+
+for nibble in nibble_iter(&raw_bytes) {
+    process(nibble);
+}
+```
+
+### `to_packed_into` — runtime stack-only encode
+
+```rust
+let mut buf = [0u8; 10];
+to_packed_into(&value, &cfg, &mut buf)?;
+```
+
+---
+
+## Unchanged APIs (safe to keep as-is)
+
+- `from_packed(&bytes, &cfg, sign_mode)` — unchanged
+- `to_packed(&value, &cfg)` — unchanged
+- `from_packed_scalar` — unchanged
+- `stream_nibbles` — unchanged
+- `PackedError` variants (additions only; no removals)
+- `SignMode::{Pfd, Nopfd}` — unchanged

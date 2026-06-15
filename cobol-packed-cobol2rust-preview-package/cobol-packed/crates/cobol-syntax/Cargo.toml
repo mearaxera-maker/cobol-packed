@@ -1,0 +1,11 @@
+[package]
+name = "cobol-syntax"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+description = "Rust-native COBOL lexer and parser for the converter MVP"
+
+[dependencies]
+cobol-ir = { path = "../cobol-ir" }
+thiserror = "2.0"
