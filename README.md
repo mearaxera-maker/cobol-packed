@@ -1,132 +1,69 @@
 # cobol_packed
-### Forensic-Grade, SIMD-Accelerated COMP-3 for Rust
 
-![Rust](https://img.shields.io/badge/rust-stable-orange)
-![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)
-![Status](https://img.shields.io/badge/status-active-success)
-![SIMD](https://img.shields.io/badge/SIMD-AVX2%20%7C%20SSE2-purple)
-![Fuzzed](https://img.shields.io/badge/fuzzed-nibble--space-critical)
+`cobol_packed` is a Rust workspace that contains a forensic-grade COMP-3 (packed decimal) codec and an early COBOL→Rust converter preview. This reorganization collects the crates, binaries, tests, and tools into a single workspace and documents how to build and verify the project.
 
-> A zero-allocation, no-panic packed decimal codec designed for high-frequency fintech systems, forensic migration tooling, and mainframe modernization.
+Bad data and migration edge-cases are the reason this project exists: negative-zero handling, overflow boundaries, non-preferred sign nibble acceptance, and SIMD/scalar parity are subtle and easy to get wrong. This workspace prioritizes correctness, reproducible CI, and a developer experience for both library users and migration engineers.
 
-`cobol_packed` treats COMP-3 as a binary contract — not a convenience format.
+Badges: (status, license, msrv)
 
----
+- MSRV: Rust 1.74
+- License: MIT OR Apache-2.0
 
-## Why This Exists
+Quick start — developer (build the whole workspace):
 
-Most packed-decimal bugs are not obvious:
+```bash
+# Ensure you have rustup with 1.74 toolchain
+rustup toolchain install 1.74
+rustup default 1.74
 
-- negative-zero normalization
-- off-by-one overflow boundaries
-- malformed sign nibble acceptance
-- SIMD/scalar drift
-- invalid even-digit padding
-- hidden `.abs()` overflows
-
-This crate was built to eliminate those classes of failures.
-
----
-
-## Features
-
-- Scalar reference decoder (source of truth)
-- Optional AVX2/SSE2 validation layer
-- Const-generic codecs (`Packed::<18,2,true>`)
-- Stack-only encode APIs
-- Lossless forensic round-trips
-- Explicit sign policy engine
-- Exact overflow law (`10^digits - 1`)
-- Exhaustive nibble fuzzing
-- Criterion benchmarks
-- Kani proof harness
-
----
-
-## Quick Start
-
-```rust
-use cobol_packed::{Packed, SignMode};
-
-type Balance = Packed<15, 2, true>;
-
-fn main() {
-    let codec = Balance::new();
-
-    let raw = [
-        0x00,
-        0x00,
-        0x00,
-        0x12,
-        0x34,
-        0x5C,
-    ];
-
-    let value = codec.decode(&raw, SignMode::Pfd).unwrap();
-
-    println!("{}", value); // 123.45
-}
+# Build + test workspace
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
 ```
 
----
+Install the CLI binary (recommended):
 
-## Architecture
-
-```text
-Packed Bytes
-    ↓
-Scalar Reference Decoder  ← SIMD Validation Layer
-    ↓
-Policy Engine
-    ↓
-Decimal Representation
-    ↓
-Canonical | Explicit-Sign | Lossless Encode
+```bash
+cargo install --path crates/cobol-packed --features cli
 ```
 
----
+Run the converter preview:
 
-## Red-Team Notes
-
-### Negative Zero
-
-`000D` and `000C` are not treated as identical in forensic mode.
-
-### Overflow Law
-
-The maximum representable value is:
-
-```text
-10^digits - 1
+```bash
+cargo run --package cobol_packed --features converter --bin cobol2rust -- convert \
+  --input program.cbl \
+  --copybook-dir copybooks \
+  --out generated-rust \
+  --dialect ibm \
+  --source-format fixed
 ```
 
-not:
+Files & layout
 
-```text
-10^digits
-```
+- crates/cobol-packed — the packed-decimal codec and CLI
+- crates/cobol-codegen-rust — converter frontend and codegen (preview)
+- crates/* — other internal crates (ir, platform, record, python bindings)
+- examples/ — small usage examples
+- fuzz/ — cargo-fuzz targets
+- kani/ — Kani proofs harness
+- benches/ — Criterion benchmarks
 
-### Scalar Truth Law
+CI & verification notes
 
-SIMD never overrides scalar semantics.
+- The workspace provides multiple verification levels: fast PR CI (fmt, clippy, unit tests), scheduled deep-verification (fuzz campaigns + Kani proofs), and release workflows that build artifacts and SBOMs.
+- The deep verification jobs are expensive; they are run on schedule and by manual dispatch to avoid excessive push-costs.
 
-The scalar decoder is the authoritative model.
+Security & supply chain
 
----
+- We keep a repo-level Cargo.lock to improve reproducibility.
+- Run `cargo audit` locally or in CI (`cargo install cargo-audit`).
 
-## Repository Layout
+Where to look next
 
-```text
-/src
-/benches
-/docs
-/examples
-/fuzz
-/kani
-```
+- docs/architecture.md — design and invariant description
+- docs/cli.md — CLI usage and schema reference
+- docs/converter.md — converter preview status and supported subset
+- CHANGELOG.md — notable changes and releases
+- CONTRIBUTING.md — contributor requirements and invariants
 
----
-
-## License
-
-MIT OR Apache-2.0
