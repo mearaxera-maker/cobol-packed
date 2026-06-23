@@ -1,0 +1,15 @@
+[package]
+name = "cobol-vm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+license = "MIT OR Apache-2.0"
+description = "Executable COBOL value and condition semantics for generated Rust"
+
+[dependencies]
+cobol-dialect = { path = "../cobol-dialect" }
+cobol-platform = { path = "../cobol-platform" }
+cobol-record = { path = "../cobol-record" }
+rust_decimal = "1.36"
+serde_json = "1.0"
+thiserror = "2.0"

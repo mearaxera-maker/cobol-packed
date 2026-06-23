@@ -1,0 +1,31 @@
+cobol_packed
+
+This project is distributed under the dual license declared in Cargo metadata:
+MIT OR Apache-2.0. The full Apache-2.0 text is in LICENSE and LICENSE-APACHE.
+The MIT text is in LICENSE-MIT.
+
+The repository contains the following first-party workspace crates under the
+same MIT OR Apache-2.0 license expression:
+
+- cobol_packed
+- cobol-codegen-rust
+- cobol-dialect
+- cobol-ir
+- cobol-platform
+- cobol-record
+- cobol-runtime
+- cobol-sema
+- cobol-source
+- cobol-syntax
+- cobol-text
+- cobol-vm
+
+GnuCOBOL is used only as an external oracle test executable when the
+oracle_gnucobol test suite is run. It is not linked into the converter, not
+vendored into this repository, and not bundled in release archives produced by
+the standard release workflow.
+
+Release packages include a Cargo metadata SBOM so downstream redistributors can
+review exact dependency versions and declared license expressions for the build.
+Trademark review requirements for public redistribution are documented in
+docs/trademark.md.

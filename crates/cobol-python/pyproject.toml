@@ -1,0 +1,47 @@
+[build-system]
+requires = ["maturin>=1,<2"]
+build-backend = "maturin"
+
+[project]
+name = "cobol-converter"
+version = "0.1.0"
+description = "Python bindings and CLI for the COBOL-to-Rust converter"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT OR Apache-2.0" }
+dependencies = [
+    "click>=8.1",
+    "tomli>=2.0; python_version < '3.11'",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Code Generators",
+]
+
+[project.scripts]
+cobol2rust = "cobol_converter.cli:main"
+cobol2rust-lsp = "cobol_converter.language_server:main"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+]
+
+[tool.maturin]
+bindings = "pyo3"
+features = ["extension-module"]
+module-name = "cobol_converter._native"
+python-source = "python"
+include = [
+    { path = "LICENSE", format = "sdist" },
+    { path = "LICENSE-APACHE", format = "sdist" },
+    { path = "LICENSE-MIT", format = "sdist" },
+    { path = "NOTICE", format = "sdist" },
+    { path = "SECURITY.md", format = "sdist" },
+    { path = "ENTERPRISE.md", format = "sdist" },
+    { path = "docs/compliance.md", format = "sdist" },
+    { path = "docs/trademark.md", format = "sdist" },
+    { path = "notebooks/interactive_conversion.ipynb", format = "sdist" },
+    { path = "notebooks/interactive_conversion.ipynb", format = "wheel" },
+]
