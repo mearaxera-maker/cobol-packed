@@ -1336,6 +1336,14 @@ fn emit_initial_storage_byte_copy(start: usize, bytes: &[u8]) -> String {
     )
 }
 
+fn byte_vec_literal(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| format!("{byte}u8"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn emit_data_rs_multi(programs: &[ProgramIr]) -> String {
     let mut text = String::from(
         "#![allow(dead_code, unused_imports, unused_mut)]\n\nuse cobol_runtime::{CobolByteStorage, CobolFieldKind, CobolValue};\n\n",
@@ -1602,12 +1610,10 @@ fn emit_pool_cell_initializers(ir: &ProgramIr, initial_var: &str, skip_linkage: 
             if key_item.qualified_name != item.qualified_name {
                 continue;
             }
-            let end = item.offset.saturating_add(item.byte_len);
             let key = scalar_storage_key_expr(ir, item);
+            let bytes = byte_vec_literal(&initial_storage_bytes_for_item(ir, item, item.byte_len));
             text.push_str(&format!(
-                "        if let Some(bytes) = {initial_var}.bytes().get({}..{}) {{\n            let _ = pool.define_cell({key}, bytes.to_vec());\n        }}\n",
-                item.offset,
-                end
+                "        let _ = pool.define_cell({key}, vec![{bytes}]);\n"
             ));
         } else if let Some(occurs_item) = occurs_chain_for_item(item, ir).first().copied() {
             let key_item = storage_cell_key_item(ir, item);
@@ -1678,10 +1684,9 @@ fn emit_initial_lifecycle_vectors(
                 continue;
             }
             let key = scalar_storage_key_expr(ir, item);
-            let end = item.offset.saturating_add(item.byte_len);
+            let bytes = byte_vec_literal(&initial_storage_bytes_for_item(ir, item, item.byte_len));
             text.push_str(&format!(
-                "        if let Some(bytes) = {initial_var}.bytes().get({}..{}) {{\n            {cells_var}.push(({key}, bytes.to_vec()));\n        }}\n",
-                item.offset, end
+                "        {cells_var}.push(({key}, vec![{bytes}]));\n"
             ));
         } else if let Some(occurs_item) = occurs_chain_for_item(item, ir).first().copied() {
             let key_item = storage_cell_key_item(ir, item);
@@ -1713,11 +1718,7 @@ fn emit_initial_lifecycle_vectors(
         if table_item.map(|item| item.external).unwrap_or(false) {
             continue;
         }
-        let active = ir
-            .storage
-            .items
-            .iter()
-            .find(|item| item.name.eq_ignore_ascii_case(&odo.depending_on))
+        let active = storage_item_by_name(ir, &odo.depending_on)
             .and_then(|item| item.value.as_ref())
             .and_then(|value| value.trim().parse::<usize>().ok())
             .unwrap_or(odo.min);
@@ -1972,11 +1973,7 @@ fn emit_runtime_indexes_and_odo(ir: &ProgramIr) -> String {
         ));
     }
     for odo in &ir.odo_descriptors {
-        let active = ir
-            .storage
-            .items
-            .iter()
-            .find(|item| item.name.eq_ignore_ascii_case(&odo.depending_on))
+        let active = storage_item_by_name(ir, &odo.depending_on)
             .and_then(|item| item.value.as_ref())
             .and_then(|value| value.trim().parse::<usize>().ok())
             .unwrap_or(odo.min);
@@ -2321,12 +2318,10 @@ fn emit_program_default_body(ir: &ProgramIr) -> String {
             if key_item.qualified_name != item.qualified_name {
                 continue;
             }
-            let end = item.offset.saturating_add(item.byte_len);
             let key = scalar_storage_key_expr(ir, item);
+            let bytes = byte_vec_literal(&initial_storage_bytes_for_item(ir, item, item.byte_len));
             text.push_str(&format!(
-                "        if let Some(bytes) = initial.bytes().get({}..{}) {{\n            let _ = pool.define_cell({key}, bytes.to_vec());\n        }}\n",
-                item.offset,
-                end
+                "        let _ = pool.define_cell({key}, vec![{bytes}]);\n"
             ));
         } else if let Some(occurs_item) = occurs_chain_for_item(item, ir).first().copied() {
             let key_item = storage_cell_key_item(ir, item);
@@ -2453,11 +2448,7 @@ fn emit_program_default_body(ir: &ProgramIr) -> String {
         ));
     }
     for odo in &ir.odo_descriptors {
-        let active = ir
-            .storage
-            .items
-            .iter()
-            .find(|item| item.name.eq_ignore_ascii_case(&odo.depending_on))
+        let active = storage_item_by_name(ir, &odo.depending_on)
             .and_then(|item| item.value.as_ref())
             .and_then(|value| value.trim().parse::<usize>().ok())
             .unwrap_or(odo.min);

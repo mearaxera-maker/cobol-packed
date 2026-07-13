@@ -2,11 +2,12 @@ use rust_decimal::Decimal;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum CobolValue {
     Text(String),
     Decimal(Decimal),
     Bytes(Vec<u8>),
+    #[default]
     Null,
 }
 
@@ -31,12 +32,6 @@ pub struct CobolFieldLayout {
     pub offset: usize,
     pub byte_len: usize,
     pub kind: CobolFieldKind,
-}
-
-impl Default for CobolValue {
-    fn default() -> Self {
-        Self::Null
-    }
 }
 
 impl CobolValue {

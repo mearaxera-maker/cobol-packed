@@ -277,11 +277,21 @@ use `--evidence-argv omit` to suppress argv entirely.
 
 ## COMP-3 Sign Notes
 
-PFD decoding accepts `0xC` as a positive sign for unsigned fields because this
-appears in real COBOL datasets. Canonical unsigned encoding emits `0xF`.
-Therefore canonical verification can flag unsigned fields whose original bytes
-use `0xC`; use lossless mode for byte-for-byte forensic preservation, or
-canonical mode when normalization to preferred unsigned signs is intended.
+IBM internal decimal data can carry `0xA`, `0xC`, `0xE`, or `0xF` as positive
+sign nibbles and `0xB` or `0xD` as negative sign nibbles. The public COMP-3
+codec exposes this through `pfd` and `nopfd` modes: use `nopfd` when importing
+host files that may contain non-preferred signs.
+
+Canonical unsigned encoding emits `0xF`, while canonical signed encoding emits
+`0xC` for positive values and `0xD` for negative values. Therefore canonical
+verification can flag fields whose original bytes use a different valid sign
+nibble; use lossless mode for byte-for-byte forensic preservation, or canonical
+mode when normalization to preferred signs is intended.
+
+Generated converter accessors and the internal `cobol-record` helper accept the
+full valid internal decimal sign family on decode, then emit canonical signs on
+encode. Packed decimal digit counts are bounded to `1..=18` throughout the
+workspace.
 
 ## Error Model
 

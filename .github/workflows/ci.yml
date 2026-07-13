@@ -174,7 +174,7 @@ jobs:
       - name: Run oracle tests
         shell: bash
         run: |
-          cargo test --features converter --test oracle_gnucobol -- --nocapture 2>&1 | tee oracle-evidence/oracle-test.log
+          cargo test --features converter --test oracle_gnucobol -- --ignored --nocapture 2>&1 | tee oracle-evidence/oracle-test.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:

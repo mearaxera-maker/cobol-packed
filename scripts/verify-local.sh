@@ -52,8 +52,21 @@ step() {
 step "toolchain" rustc --version
 step "cargo" cargo --version
 step "format" cargo fmt --all --check
-step "clippy" cargo clippy --workspace --all-targets --all-features -- -D warnings
-step "workspace tests" cargo test --workspace --all-features
+
+workspace_args=(--workspace --all-targets --all-features)
+test_args=(--workspace --all-features)
+if ! command -v python >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+  if [ "$profile" = "full" ]; then
+    echo "full verification requires Python 3.x for the cobol-python workspace crate" >&2
+    exit 1
+  fi
+  echo "warning: Python 3.x not found; smoke profile excludes cobol-python" >&2
+  workspace_args=(--workspace --all-targets --all-features --exclude cobol-python)
+  test_args=(--workspace --all-features --exclude cobol-python)
+fi
+
+step "clippy" cargo clippy "${workspace_args[@]}" -- -D warnings
+step "workspace tests" cargo test "${test_args[@]}"
 
 echo "==> generated converter project compiles offline"
 root="$repo_root/target/local-verify"
@@ -76,7 +89,7 @@ if [ "$with_oracle" -eq 1 ] || [ "$profile" = "full" ]; then
     echo "GnuCOBOL oracle requested, but cobc is not on PATH" >&2
     exit 1
   fi
-  step "GnuCOBOL oracle tests" cargo test --features converter --test oracle_gnucobol -- --nocapture
+  step "GnuCOBOL oracle tests" cargo test --features converter --test oracle_gnucobol -- --ignored --nocapture
 fi
 
 if [ "$with_audit" -eq 1 ] || [ "$profile" = "full" ]; then

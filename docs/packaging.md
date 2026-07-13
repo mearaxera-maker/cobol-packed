@@ -1,6 +1,6 @@
 # Packaging And Distribution
 
-Release archives are produced by `.github/workflows/release.yml` for:
+Release-candidate archives are produced by `.github/workflows/release.yml` for:
 
 - Linux x86_64: `cobol-packed-linux-x86_64.tar.gz`
 - macOS x86_64: `cobol-packed-macos-x86_64.tar.gz`
@@ -18,8 +18,22 @@ Each archive contains:
 - `SECURITY.md`
 - `SBOM.cargo-metadata.json`
 
-Release checksum files are signed by the release workflow before the GitHub
-Release is published.
+The workflow uploads each archive with a SHA-256 checksum as a GitHub Actions
+artifact. It does not publish a GitHub Release and does not publish crates to
+crates.io.
+
+## crates.io Boundary
+
+The current upload branch is a full converter workspace, not the old
+single-crate COMP-3 package. Internal workspace dependencies carry explicit
+versions for package metadata, and the root manifest sets `publish = false` so
+`cargo publish` fails closed. Publishing the root crate is not a supported
+release step until the first-party workspace crates are published in dependency
+order or the converter is split into its own published package.
+
+Use the release-candidate archive workflow for this branch. Use crates.io only
+for already-published compatible `cobol_packed` releases whose manifests do not
+depend on unpublished workspace crates.
 
 ## Local Release Build
 

@@ -10,7 +10,7 @@ Oracle fixtures provide evidence for selected rows in that matrix.
 ## Running The Oracle Suite
 
 ```powershell
-cargo test --features converter --test oracle_gnucobol -- --nocapture
+cargo test --features converter --test oracle_gnucobol -- --ignored --nocapture
 ```
 
 The tests require `cobc` on `PATH`. If GnuCOBOL is unavailable, external oracle

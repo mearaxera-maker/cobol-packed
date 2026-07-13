@@ -11,6 +11,7 @@ that vendor the runtime crates needed to execute the supported COBOL subset.
 ## Prerequisites
 
 - Rust stable, 1.74 or newer.
+- Python 3.x when checking or packaging the optional `cobol-python` binding.
 - A platform linker and C/C++ build tools for crates that compile native test
   dependencies.
 - Git, when working from the repository.
@@ -37,14 +38,15 @@ cargo install --path . --features cli --bin cobol-packed --locked
 cargo install --path . --features converter --bin cobol2rust --locked
 ```
 
-The crates.io installation path for `cobol-packed` remains:
+For already-published compatible releases, the crates.io installation path for
+`cobol-packed` remains:
 
 ```text
 cargo install cobol_packed --features cli
 ```
 
-Use repository installation for `cobol2rust` until the converter is published
-as a stable external tool.
+Use repository installation for this upload branch and for `cobol2rust` until
+the converter workspace is published as a stable external tool.
 
 ## Verification Scripts
 
@@ -59,12 +61,12 @@ bash scripts/verify-local.sh --profile smoke
 ```
 
 The smoke profile checks formatting, clippy, the all-feature test suite, and
-an offline compile of a generated Rust project. The all-feature suite includes
-the CLI and converter integration tests. The generated-project check verifies
-that generated code builds against the vendored internal runtime crates. It
-still requires normal crates.io dependencies such as `rust_decimal`,
-`serde_json`, and `thiserror` to be present in the local Cargo cache when run
-with `--offline`.
+an offline compile of a generated Rust project. If Python 3.x is not available,
+smoke verification excludes only the optional `cobol-python` crate and reports
+that exclusion. The generated-project check verifies that generated code builds
+against the vendored internal runtime crates. It still requires normal crates.io
+dependencies such as `rust_decimal`, `serde_json`, and `thiserror` to be present
+in the local Cargo cache when run with `--offline`.
 
 Run the fuller profile when optional tools are installed:
 
@@ -76,8 +78,8 @@ powershell -ExecutionPolicy Bypass -File scripts/verify-local.ps1 -Profile full
 bash scripts/verify-local.sh --profile full
 ```
 
-The full profile requires `cobc` and `cargo-fuzz`. `cargo-audit` is used when
-available and otherwise reported as a warning.
+The full profile requires Python 3.x, `cobc`, and `cargo-fuzz`. `cargo-audit`
+is used when available and otherwise reported as a warning.
 
 ## Manual Test Commands
 
@@ -87,12 +89,19 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
 cargo test --features cli --test cli_smoke
 cargo test --features converter --test converter_smoke
-cargo test --features converter --test oracle_gnucobol -- --nocapture
+cargo test --features converter --test converter_smoke -- --ignored --test-threads=1
+cargo test --features converter --test oracle_gnucobol -- --ignored --nocapture
 ```
 
-The oracle suite skips external fixtures when `cobc` is missing in local runs.
-CI installs GnuCOBOL and treats a missing `cobc` as a failure so the oracle job
-cannot pass without executing the oracle fixtures. To run it locally, install
+`converter_smoke` runs a bounded default set, including generated-project COMP-3
+sort and compute checks. The `--ignored` form runs the exhaustive generated
+project suite; it is intentionally serial because many cases invoke nested Cargo
+builds.
+
+The default oracle target runs fixture metadata checks only. The ignored oracle
+fixtures compile and run COBOL programs with `cobc`; they skip external fixtures
+when `cobc` is missing in local runs. CI installs GnuCOBOL and treats a missing
+`cobc` as a failure so the oracle job cannot pass without executing the oracle fixtures. To run it locally, install
 GnuCOBOL and confirm:
 
 ```text

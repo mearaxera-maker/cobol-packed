@@ -22,8 +22,9 @@ use cobol_ir::{
 use cobol_record::{
     align_offset as record_align_offset, coverage_summary, elementary_byte_len as record_byte_len,
     encode_packed_decimal, packed_decimal_len, sync_alignment, CoverageKind, CoverageRange,
-    LayoutMode, PicCategory, PlatformProfile, RecordConditionName, RecordConditionValue,
-    RecordField, RecordOccurs, RecordPicture, RecordPlan, RecordRedefines, RecordUsage, SourceRef,
+    CoverageSummary, LayoutMode, PicCategory, PlatformProfile, RecordAreaCoverage,
+    RecordConditionName, RecordConditionValue, RecordField, RecordLayoutCoverage, RecordOccurs,
+    RecordPicture, RecordPlan, RecordRedefines, RecordStorageArea, RecordUsage, SourceRef,
 };
 use cobol_syntax::{
     DataClauseAst, DataDeclAst, DataOccursKeyDirectionAst, DataValueAst, DeclarativeTriggerAst,
@@ -897,13 +898,17 @@ fn resolve_condition_tree(
             }
         }
         ConditionIr::ConditionName { reference } => {
-            let resolution = resolve_reference_for_role(
+            let context = ReferenceResolutionContext {
                 data_index,
                 indexes,
-                reference,
-                ReferenceRoleIr::ConditionOperand,
                 paragraph,
                 statement_index,
+            };
+            let resolution = resolve_reference_for_role_with_lookup(
+                &context,
+                reference,
+                ReferenceRoleIr::ConditionOperand,
+                true,
                 diagnostics,
             );
             if resolution.category != Some(ValueCategoryIr::ConditionName) {
@@ -989,13 +994,17 @@ fn resolve_condition_operand(
         ConditionOperandIr::Bool(_) => Some(ValueCategoryIr::ConditionName),
         ConditionOperandIr::Function(function) => {
             for reference in function_references(function) {
-                let resolution = resolve_reference_for_role(
+                let context = ReferenceResolutionContext {
                     data_index,
                     indexes,
-                    &reference.0,
-                    ReferenceRoleIr::ConditionOperand,
                     paragraph,
                     statement_index,
+                };
+                let resolution = resolve_reference_for_role_with_lookup(
+                    &context,
+                    &reference.0,
+                    ReferenceRoleIr::ConditionOperand,
+                    true,
                     diagnostics,
                 );
                 references.push(resolution);
@@ -1064,6 +1073,13 @@ fn class_test_supported(category: Option<ValueCategoryIr>, class: ClassTestIr) -
     }
 }
 
+struct ReferenceResolutionContext<'a, 'b> {
+    data_index: &'a DataReferenceIndex<'b>,
+    indexes: &'a [IndexItemIr],
+    paragraph: &'a ParagraphIr,
+    statement_index: usize,
+}
+
 fn resolve_reference_for_role(
     data_index: &DataReferenceIndex<'_>,
     indexes: &[IndexItemIr],
@@ -1073,12 +1089,34 @@ fn resolve_reference_for_role(
     statement_index: usize,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ReferenceResolutionIr {
+    let context = ReferenceResolutionContext {
+        data_index,
+        indexes,
+        paragraph,
+        statement_index,
+    };
+    resolve_reference_for_role_with_lookup(&context, reference, role, false, diagnostics)
+}
+
+fn resolve_reference_for_role_with_lookup(
+    context: &ReferenceResolutionContext<'_, '_>,
+    reference: &DataRefIr,
+    role: ReferenceRoleIr,
+    prefer_storage: bool,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ReferenceResolutionIr {
     let mut status = ReferenceResolutionStatusIr::Resolved;
     let mut target = None;
     let mut candidates = Vec::new();
     let mut category = None;
 
-    match data_index.resolve_ref(reference) {
+    let resolution = if prefer_storage {
+        context.data_index.resolve_storage_preferred(reference)
+    } else {
+        context.data_index.resolve_ref(reference)
+    };
+
+    match resolution {
         DataResolution::Missing => {
             diagnostics.push(Diagnostic::error(
                 "E_UNRESOLVED_DATA",
@@ -1086,7 +1124,7 @@ fn resolve_reference_for_role(
                     "data reference {} does not resolve to a Data Division item or condition name",
                     reference.raw
                 ),
-                paragraph.span.clone(),
+                context.paragraph.span.clone(),
             ));
             status = ReferenceResolutionStatusIr::Missing;
         }
@@ -1099,13 +1137,43 @@ fn resolve_reference_for_role(
                     reference.raw,
                     matches.join(", ")
                 ),
-                paragraph.span.clone(),
+                context.paragraph.span.clone(),
             ));
             status = ReferenceResolutionStatusIr::Ambiguous;
         }
         DataResolution::Condition(condition) => {
             target = Some(condition_qualified_name(condition));
             category = Some(ValueCategoryIr::ConditionName);
+            if let DataResolution::Resolved(parent) = context.data_index.resolve(&condition.parent)
+            {
+                if reference.is_subscripted() {
+                    validate_subscripts(
+                        reference,
+                        parent,
+                        context.data_index,
+                        context.indexes,
+                        context.paragraph,
+                        diagnostics,
+                    );
+                    if reference.subscripts.len() != occurs_chain(parent, context.data_index).len()
+                    {
+                        status = ReferenceResolutionStatusIr::InvalidSubscript;
+                    }
+                } else {
+                    let occurs_depth = occurs_chain(parent, context.data_index).len();
+                    if occurs_depth > 0 {
+                        diagnostics.push(Diagnostic::error(
+                            "E_MISSING_SUBSCRIPT",
+                            format!(
+                                "condition-name {} resolves to {} and requires {} subscript(s)",
+                                reference.raw, condition.parent, occurs_depth
+                            ),
+                            context.paragraph.span.clone(),
+                        ));
+                        status = ReferenceResolutionStatusIr::InvalidSubscript;
+                    }
+                }
+            }
             if reference.has_reference_modifier() {
                 diagnostics.push(Diagnostic::error(
                     "E_INVALID_REFERENCE_MODIFICATION",
@@ -1113,7 +1181,7 @@ fn resolve_reference_for_role(
                         "condition-name {} cannot be reference-modified because 88-levels are predicates",
                         reference.raw
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedReferenceModification;
             }
@@ -1129,7 +1197,7 @@ fn resolve_reference_for_role(
                         "condition name {} cannot be used as a receiving storage item",
                         condition.name
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedCategory;
             }
@@ -1142,7 +1210,7 @@ fn resolve_reference_for_role(
                         "condition-name {} is a predicate, not a storage item; this procedure role is not enabled for generated Rust yet",
                         reference.raw
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedCategory;
             }
@@ -1161,7 +1229,7 @@ fn resolve_reference_for_role(
                         "special register {} cannot be reference-modified in generated Rust yet",
                         reference.raw
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedReferenceModification;
             }
@@ -1169,7 +1237,7 @@ fn resolve_reference_for_role(
                 diagnostics.push(Diagnostic::error(
                     "E_CODEGEN_SUBSCRIPT",
                     format!("special register {} cannot be subscripted", reference.raw),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::InvalidSubscript;
             }
@@ -1180,7 +1248,7 @@ fn resolve_reference_for_role(
                         "special register {} has semantic category {:?}; this procedure role is not enabled for generated Rust yet",
                         reference.raw, special_category
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedCategory;
             }
@@ -1189,13 +1257,26 @@ fn resolve_reference_for_role(
             target = Some(item.qualified_name.clone());
             category = Some(item.value_category);
             if reference.has_reference_modifier()
-                && !validate_reference_modifier(reference, item, data_index, paragraph, diagnostics)
+                && !validate_reference_modifier(
+                    reference,
+                    item,
+                    context.data_index,
+                    context.paragraph,
+                    diagnostics,
+                )
             {
                 status = ReferenceResolutionStatusIr::UnsupportedReferenceModification;
             }
             if reference.is_subscripted() {
-                validate_subscripts(reference, item, data_index, indexes, paragraph, diagnostics);
-                let occurs_depth = occurs_chain(item, data_index).len();
+                validate_subscripts(
+                    reference,
+                    item,
+                    context.data_index,
+                    context.indexes,
+                    context.paragraph,
+                    diagnostics,
+                );
+                let occurs_depth = occurs_chain(item, context.data_index).len();
                 let subscript_aware_context = role_allows_subscripted_occurs(role);
                 if !subscript_aware_context || reference.subscripts.len() != occurs_depth {
                     diagnostics.push(Diagnostic::error(
@@ -1204,12 +1285,12 @@ fn resolve_reference_for_role(
                             "data reference {} uses subscripts; only fully-subscripted condition/evaluate operands and CALL USING arguments are enabled for generated Rust",
                             reference.raw
                         ),
-                        paragraph.span.clone(),
+                        context.paragraph.span.clone(),
                     ));
                     status = ReferenceResolutionStatusIr::InvalidSubscript;
                 }
             } else {
-                let occurs_depth = occurs_chain(item, data_index).len();
+                let occurs_depth = occurs_chain(item, context.data_index).len();
                 if occurs_depth > 0 {
                     diagnostics.push(Diagnostic::error(
                         "E_MISSING_SUBSCRIPT",
@@ -1217,12 +1298,12 @@ fn resolve_reference_for_role(
                             "data reference {} resolves to {} and requires {} subscript(s)",
                             reference.raw, item.qualified_name, occurs_depth
                         ),
-                        paragraph.span.clone(),
+                        context.paragraph.span.clone(),
                     ));
                     status = ReferenceResolutionStatusIr::InvalidSubscript;
                 }
             }
-            let has_dynamic_occurs_context = data_index.has_dynamic_occurs_context(item);
+            let has_dynamic_occurs_context = context.data_index.has_dynamic_occurs_context(item);
             let unsupported_occurs_context = if has_dynamic_occurs_context {
                 !role_allows_subscripted_dynamic_occurs(role) || !reference.is_subscripted()
             } else {
@@ -1235,21 +1316,21 @@ fn resolve_reference_for_role(
                         "field {} is inside OCCURS DEPENDING ON storage; only checked condition/evaluate reads are enabled",
                         item.qualified_name
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedDynamic;
-            } else if data_index.has_occurs_context(item) && unsupported_occurs_context {
+            } else if context.data_index.has_occurs_context(item) && unsupported_occurs_context {
                 diagnostics.push(Diagnostic::error(
                     "E_CODEGEN_OCCURS_REFERENCE",
                     format!(
                         "field {} is inside OCCURS storage; only subscript-aware condition/evaluate reads are enabled",
                         item.qualified_name
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedDynamic;
             }
-            if (item.redefines.is_some() || data_index.is_redefined_base(item))
+            if (item.redefines.is_some() || context.data_index.is_redefined_base(item))
                 && !matches!(role, ReferenceRoleIr::ConditionOperand)
             {
                 diagnostics.push(Diagnostic::error(
@@ -1258,7 +1339,7 @@ fn resolve_reference_for_role(
                         "field {} participates in REDEFINES storage; non-condition procedure code still needs active-view semantics",
                         item.qualified_name
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedRedefines;
             }
@@ -1269,7 +1350,7 @@ fn resolve_reference_for_role(
                         "field {} has semantic category {:?}; this procedure role is not enabled for generated Rust yet",
                         item.qualified_name, item.value_category
                     ),
-                    paragraph.span.clone(),
+                    context.paragraph.span.clone(),
                 ));
                 status = ReferenceResolutionStatusIr::UnsupportedCategory;
             }
@@ -1279,14 +1360,14 @@ fn resolve_reference_for_role(
     ReferenceResolutionIr {
         raw: reference.raw.clone(),
         normalized: reference.normalized.clone(),
-        paragraph: paragraph.name.clone(),
-        statement_index,
+        paragraph: context.paragraph.name.clone(),
+        statement_index: context.statement_index,
         role,
         status,
         target,
         candidates,
         category,
-        span: paragraph.span.clone(),
+        span: context.paragraph.span.clone(),
     }
 }
 
@@ -3662,6 +3743,20 @@ fn analyze_data_items(
                 let value_set = extract_condition_value_set_from_clause_ast(&ast_item.clause_ast)
                     .unwrap_or_else(|| extract_condition_value_set(&ast_item.clauses));
                 let parent = planned[parent_idx].item.qualified_name.clone();
+                if planned[parent_idx]
+                    .conditions
+                    .iter()
+                    .any(|condition| condition.name.eq_ignore_ascii_case(&ast_item.name))
+                {
+                    diagnostics.push(Diagnostic::error(
+                        "E_DUPLICATE_SYMBOL",
+                        format!(
+                            "duplicate condition-name {} under parent {}",
+                            ast_item.name, parent
+                        ),
+                        ast_item.span.clone(),
+                    ));
+                }
                 planned[parent_idx].conditions.push(ConditionNameIr {
                     name: ast_item.name.clone(),
                     rust_name: rust_ident(&ast_item.name),
@@ -3729,6 +3824,10 @@ fn analyze_data_items(
             }
         }
 
+        if matches!(ast_item.level, 1 | 77) && level_stack.is_empty() {
+            cursors.insert((item_area_key, None), 0);
+        }
+
         let parent_idx = level_stack.last().map(|(_, idx)| *idx);
         let parent = parent_idx.map(|idx| planned[idx].item.qualified_name.clone());
         let mut path = parent_idx
@@ -3773,6 +3872,7 @@ fn analyze_data_items(
             .unwrap_or(false);
         let area_key = item_area_key;
         let mut offset = *cursors.get(&(area_key, parent.clone())).unwrap_or(&0);
+        let mut redefines_layout_id = None;
 
         if let Some(base_name) = &redefines_key {
             if let Some(base_idx) = scoped_name_to_index
@@ -3780,6 +3880,7 @@ fn analyze_data_items(
                 .copied()
             {
                 offset = planned[base_idx].item.offset.unwrap_or(offset);
+                redefines_layout_id = planned[base_idx].item.layout_id.clone();
             } else {
                 diagnostics.push(Diagnostic::error(
                     "E_UNRESOLVED_REDEFINES",
@@ -3801,7 +3902,11 @@ fn analyze_data_items(
 
         item.offset = Some(offset);
         item.byte_len = if own_len > 0 { Some(own_len) } else { Some(0) };
-        item.layout_id = Some(item.qualified_name.clone());
+        item.layout_id = redefines_layout_id.or_else(|| {
+            parent_idx
+                .and_then(|idx| planned[idx].item.layout_id.clone())
+                .or_else(|| Some(item.qualified_name.clone()))
+        });
 
         if item.level == 77 && parent.is_some() {
             diagnostics.push(Diagnostic::error(
@@ -3853,6 +3958,8 @@ fn analyze_data_items(
             finished_idx,
         ));
     }
+
+    validate_condition_name_values(&planned, diagnostics);
 
     let mut storage_items = Vec::new();
     let mut redefines = Vec::new();
@@ -3939,6 +4046,7 @@ fn analyze_data_items(
         record_length,
         &storage_items,
         &redefines,
+        &renames,
         &conditions,
         platform_profile,
         diagnostics,
@@ -3973,12 +4081,7 @@ fn resolve_renames(
     pending: &PendingRenames,
     planned: &[PlannedData],
 ) -> Result<(DataItemIr, StorageItemIr, RenamesIr), String> {
-    let first = resolve_unique_planned_data(&pending.first, planned).ok_or_else(|| {
-        format!(
-            "RENAMES {} references unknown item {}",
-            pending.name, pending.first
-        )
-    })?;
+    let first = resolve_renames_target(pending, &pending.first, planned)?;
     if first.item.storage_area != pending.storage_area {
         return Err(format!(
             "RENAMES {} is declared in storage area {:?} but target {} is in {:?}",
@@ -3986,12 +4089,7 @@ fn resolve_renames(
         ));
     }
     let targets = if let Some(last_name) = &pending.last {
-        let last = resolve_unique_planned_data(last_name, planned).ok_or_else(|| {
-            format!(
-                "RENAMES {} references unknown item {last_name}",
-                pending.name
-            )
-        })?;
+        let last = resolve_renames_target(pending, last_name, planned)?;
         if last.item.storage_area != first.item.storage_area {
             return Err(format!(
                 "RENAMES {} crosses storage areas {:?} and {:?}",
@@ -4059,6 +4157,15 @@ fn resolve_renames(
             pending.name, occurs_item.qualified_name
         ));
     }
+    if let Some(redefines_item) = target_items
+        .iter()
+        .find(|item| planned_item_in_redefines_view(item, planned))
+    {
+        return Err(format!(
+            "RENAMES {} targets REDEFINES overlay storage {}; executable aliases for overlay views are not enabled yet",
+            pending.name, redefines_item.qualified_name
+        ));
+    }
     let offset = target_items
         .first()
         .and_then(|item| item.offset)
@@ -4124,20 +4231,127 @@ fn resolve_renames(
     Ok((data_item, storage_item, rename))
 }
 
-fn resolve_unique_planned_data<'a>(
+enum RenamesTargetResolution<'a> {
+    Resolved(&'a PlannedData),
+    Missing,
+    Ambiguous(Vec<String>),
+}
+
+fn resolve_renames_target<'a>(
+    pending: &PendingRenames,
     name: &str,
     planned: &'a [PlannedData],
-) -> Option<&'a PlannedData> {
+) -> Result<&'a PlannedData, String> {
+    match resolve_renames_target_candidate(pending, name, planned) {
+        RenamesTargetResolution::Resolved(item) => Ok(item),
+        RenamesTargetResolution::Missing => Err(format!(
+            "RENAMES {} references unknown item {}",
+            pending.name, name
+        )),
+        RenamesTargetResolution::Ambiguous(candidates) => Err(format!(
+            "RENAMES {} target {} is ambiguous; candidates: {}",
+            pending.name,
+            name,
+            candidates.join(", ")
+        )),
+    }
+}
+
+fn resolve_renames_target_candidate<'a>(
+    pending: &PendingRenames,
+    name: &str,
+    planned: &'a [PlannedData],
+) -> RenamesTargetResolution<'a> {
     let normalized = normalize_name(name);
-    let matches = planned
+    let visible = planned
         .iter()
         .filter(|candidate| {
             candidate.item.addressable
-                && (normalize_name(&candidate.item.name) == normalized
-                    || normalize_name(&candidate.item.qualified_name) == normalized)
+                && source_span_starts_before_or_at(&candidate.item.span, &pending.span)
         })
         .collect::<Vec<_>>();
-    (matches.len() == 1).then_some(matches[0])
+    let visible_same_area = visible
+        .iter()
+        .copied()
+        .filter(|candidate| candidate.item.storage_area == pending.storage_area)
+        .collect::<Vec<_>>();
+
+    let exact = visible_same_area
+        .iter()
+        .copied()
+        .filter(|candidate| normalize_name(&candidate.item.qualified_name) == normalized)
+        .collect::<Vec<_>>();
+    if !exact.is_empty() {
+        return match exact.as_slice() {
+            [candidate] => RenamesTargetResolution::Resolved(candidate),
+            matches => RenamesTargetResolution::Ambiguous(renames_target_candidate_names(matches)),
+        };
+    }
+
+    let scoped = if let Some(root) = nearest_preceding_non_66_root(pending, planned) {
+        let prefix = format!("{}.", root.item.qualified_name);
+        visible_same_area
+            .iter()
+            .copied()
+            .filter(|candidate| {
+                candidate.item.qualified_name == root.item.qualified_name
+                    || candidate.item.qualified_name.starts_with(&prefix)
+            })
+            .collect::<Vec<_>>()
+    } else {
+        visible_same_area
+    };
+
+    let matches = scoped
+        .into_iter()
+        .filter(|candidate| normalize_name(&candidate.item.name) == normalized)
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [candidate] => RenamesTargetResolution::Resolved(candidate),
+        [] => {
+            let cross_area = visible
+                .into_iter()
+                .filter(|candidate| {
+                    candidate.item.storage_area != pending.storage_area
+                        && (normalize_name(&candidate.item.name) == normalized
+                            || normalize_name(&candidate.item.qualified_name) == normalized)
+                })
+                .collect::<Vec<_>>();
+            match cross_area.as_slice() {
+                [candidate] => RenamesTargetResolution::Resolved(candidate),
+                [] => RenamesTargetResolution::Missing,
+                matches => {
+                    RenamesTargetResolution::Ambiguous(renames_target_candidate_names(matches))
+                }
+            }
+        }
+        matches => RenamesTargetResolution::Ambiguous(renames_target_candidate_names(matches)),
+    }
+}
+
+fn renames_target_candidate_names(candidates: &[&PlannedData]) -> Vec<String> {
+    candidates
+        .iter()
+        .map(|candidate| candidate.item.qualified_name.clone())
+        .collect()
+}
+
+fn nearest_preceding_non_66_root<'a>(
+    pending: &PendingRenames,
+    planned: &'a [PlannedData],
+) -> Option<&'a PlannedData> {
+    planned
+        .iter()
+        .filter(|candidate| {
+            matches!(candidate.item.level, 1 | 77)
+                && candidate.item.storage_area == pending.storage_area
+                && source_span_starts_before_or_at(&candidate.item.span, &pending.span)
+        })
+        .max_by_key(|candidate| (candidate.item.span.line, candidate.item.span.column))
+}
+
+fn source_span_starts_before_or_at(left: &SourceSpan, right: &SourceSpan) -> bool {
+    (left.line, left.column) <= (right.line, right.column)
 }
 
 fn validate_redefines_overlay_views(
@@ -4161,6 +4375,25 @@ fn validate_redefines_overlay_views(
             continue;
         };
         let base_item = &planned[base_idx].item;
+        if planned_item
+            .item
+            .byte_len
+            .zip(base_item.byte_len)
+            .is_some_and(|(overlay_len, base_len)| overlay_len > base_len)
+        {
+            diagnostics.push(Diagnostic::error(
+                "E_UNSUPPORTED_REDEFINES_OVERLAY",
+                format!(
+                    "REDEFINES item {} is {} bytes but base {} is {} bytes; larger overlays are not executable safely",
+                    planned_item.item.qualified_name,
+                    planned_item.item.byte_len.unwrap_or(0),
+                    base_item.qualified_name,
+                    base_item.byte_len.unwrap_or(0)
+                ),
+                planned_item.item.span.clone(),
+            ));
+            continue;
+        }
         if planned_item_has_occurs_context(base_item, planned)
             || planned_item_has_occurs_context(&planned_item.item, planned)
             || planned_item_subtree_has_occurs(planned, base_item)
@@ -4333,6 +4566,15 @@ fn renames_range_targets(
             first.item.name, last.item.name, occurs_item.qualified_name
         ));
     }
+    if let Some(redefines_item) = span_items
+        .iter()
+        .find(|item| planned_item_in_redefines_view(item, planned))
+    {
+        return Err(format!(
+            "RENAMES range {} THRU {} spans REDEFINES overlay storage {}",
+            first.item.name, last.item.name, redefines_item.qualified_name
+        ));
+    }
     Ok(span_items
         .into_iter()
         .map(|item| item.qualified_name.clone())
@@ -4366,6 +4608,27 @@ fn planned_item_has_occurs_context(item: &DataItemIr, planned: &[PlannedData]) -
             return false;
         };
         if parent_item.item.occurs.is_some() {
+            return true;
+        }
+        parent = parent_item.item.parent.as_ref();
+    }
+    false
+}
+
+fn planned_item_in_redefines_view(item: &DataItemIr, planned: &[PlannedData]) -> bool {
+    if item.redefines.is_some() {
+        return true;
+    }
+    let storage_area = item.storage_area;
+    let mut parent = item.parent.as_ref();
+    while let Some(parent_name) = parent {
+        let Some(parent_item) = planned.iter().find(|candidate| {
+            candidate.item.qualified_name == *parent_name
+                && candidate.item.storage_area == storage_area
+        }) else {
+            return false;
+        };
+        if parent_item.item.redefines.is_some() {
             return true;
         }
         parent = parent_item.item.parent.as_ref();
@@ -4500,6 +4763,7 @@ fn build_odo_template_ir(items: &[StorageItemIr]) -> Vec<OdoTemplateIr> {
                         child.addressable
                             && child.value_category != ValueCategoryIr::Group
                             && child.qualified_name.starts_with(&prefix)
+                            && !storage_item_in_redefines_view(child, items)
                     })
                     .collect::<Vec<_>>();
                 children.sort_by_key(|child| child.offset);
@@ -4782,6 +5046,254 @@ fn value_category_for(usage: &UsageIr, picture: Option<&PicIr>) -> ValueCategory
         },
         UsageIr::Unknown(_) => ValueCategoryIr::Unsupported,
     }
+}
+
+fn validate_condition_name_values(planned: &[PlannedData], diagnostics: &mut Vec<Diagnostic>) {
+    for planned_item in planned {
+        let parent = &planned_item.item;
+        if planned_item.conditions.is_empty() {
+            continue;
+        }
+        match parent.value_category {
+            ValueCategoryIr::Group
+            | ValueCategoryIr::Alphanumeric
+            | ValueCategoryIr::NumericEdited => {
+                let Some(byte_len) = parent.byte_len else {
+                    continue;
+                };
+                for condition in &planned_item.conditions {
+                    for literal in condition_value_literals(condition) {
+                        if literal.chars().count() > byte_len {
+                            diagnostics.push(Diagnostic::error(
+                                "E_INVALID_CONDITION_VALUE",
+                                format!(
+                                    "condition-name {} value {:?} exceeds parent {} storage length {}",
+                                    condition.name, literal, parent.qualified_name, byte_len
+                                ),
+                                condition.span.clone(),
+                            ));
+                        }
+                    }
+                    validate_condition_string_ranges(condition, diagnostics);
+                }
+            }
+            ValueCategoryIr::Alphabetic => {
+                let Some(byte_len) = parent.byte_len else {
+                    continue;
+                };
+                for condition in &planned_item.conditions {
+                    for literal in condition_value_literals(condition) {
+                        if literal.chars().count() > byte_len {
+                            diagnostics.push(Diagnostic::error(
+                                "E_INVALID_CONDITION_VALUE",
+                                format!(
+                                    "condition-name {} value {:?} exceeds parent {} storage length {}",
+                                    condition.name, literal, parent.qualified_name, byte_len
+                                ),
+                                condition.span.clone(),
+                            ));
+                        }
+                        if !condition_alphabetic_literal_is_valid(literal) {
+                            diagnostics.push(Diagnostic::error(
+                                "E_INVALID_CONDITION_VALUE",
+                                format!(
+                                    "condition-name {} value {:?} is not alphabetic for parent {}",
+                                    condition.name, literal, parent.qualified_name
+                                ),
+                                condition.span.clone(),
+                            ));
+                        }
+                    }
+                    validate_condition_string_ranges(condition, diagnostics);
+                }
+            }
+            ValueCategoryIr::NumericDisplay
+            | ValueCategoryIr::PackedDecimal
+            | ValueCategoryIr::Binary
+            | ValueCategoryIr::NativeBinary => {
+                let Some(picture) = parent.picture_ast.as_ref() else {
+                    continue;
+                };
+                for condition in &planned_item.conditions {
+                    for literal in condition_value_literals(condition) {
+                        let Some(parsed) = parse_condition_numeric_literal(literal) else {
+                            diagnostics.push(Diagnostic::error(
+                                "E_INVALID_CONDITION_VALUE",
+                                format!(
+                                    "condition-name {} value {:?} is not numeric for parent {}",
+                                    condition.name, literal, parent.qualified_name
+                                ),
+                                condition.span.clone(),
+                            ));
+                            continue;
+                        };
+                        if !numeric_literal_fits_picture(&parsed, picture) {
+                            diagnostics.push(Diagnostic::error(
+                                "E_INVALID_CONDITION_VALUE",
+                                format!(
+                                    "condition-name {} value {:?} does not fit parent {} picture {}",
+                                    condition.name, literal, parent.qualified_name, picture.raw
+                                ),
+                                condition.span.clone(),
+                            ));
+                        }
+                    }
+                    for value in &condition.value_set {
+                        let ConditionValueIr::Range { start, end } = value else {
+                            continue;
+                        };
+                        let (Some(start), Some(end)) = (
+                            parse_condition_numeric_literal(start),
+                            parse_condition_numeric_literal(end),
+                        ) else {
+                            continue;
+                        };
+                        if condition_numeric_literal_gt(&start, &end) {
+                            diagnostics.push(Diagnostic::error(
+                                "E_INVALID_CONDITION_VALUE",
+                                format!(
+                                    "condition-name {} range {:?} THRU {:?} is reversed",
+                                    condition.name, start.raw, end.raw
+                                ),
+                                condition.span.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn validate_condition_string_ranges(
+    condition: &ConditionNameIr,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for value in &condition.value_set {
+        let ConditionValueIr::Range { start, end } = value else {
+            continue;
+        };
+        if condition_string_literal_gt(start, end) {
+            diagnostics.push(Diagnostic::error(
+                "E_INVALID_CONDITION_VALUE",
+                format!(
+                    "condition-name {} range {:?} THRU {:?} is reversed",
+                    condition.name, start, end
+                ),
+                condition.span.clone(),
+            ));
+        }
+    }
+}
+
+fn condition_string_literal_gt(left: &str, right: &str) -> bool {
+    left.as_bytes() > right.as_bytes()
+}
+
+fn condition_alphabetic_literal_is_valid(value: &str) -> bool {
+    if value.eq_ignore_ascii_case("SPACE") || value.eq_ignore_ascii_case("SPACES") {
+        return true;
+    }
+    value
+        .chars()
+        .all(|ch| ch.is_ascii_alphabetic() || ch == ' ')
+}
+
+fn condition_value_literals(condition: &ConditionNameIr) -> Vec<&str> {
+    condition
+        .value_set
+        .iter()
+        .flat_map(|value| match value {
+            ConditionValueIr::Single(value) => vec![value.as_str()],
+            ConditionValueIr::Range { start, end } => vec![start.as_str(), end.as_str()],
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+struct ParsedConditionNumericLiteral {
+    raw: String,
+    negative: bool,
+    integer_digits: usize,
+    fractional_digits: usize,
+    scale: usize,
+    coefficient: i128,
+}
+
+fn parse_condition_numeric_literal(value: &str) -> Option<ParsedConditionNumericLiteral> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (negative, rest) = if let Some(rest) = trimmed.strip_prefix('-') {
+        (true, rest)
+    } else if let Some(rest) = trimmed.strip_prefix('+') {
+        (false, rest)
+    } else {
+        (false, trimmed)
+    };
+    if rest.is_empty() {
+        return None;
+    }
+    let mut parts = rest.split('.');
+    let integer = parts.next().unwrap_or_default();
+    let fractional = parts.next();
+    if parts.next().is_some() {
+        return None;
+    }
+    let fractional = fractional.unwrap_or_default();
+    if integer.is_empty() && fractional.is_empty() {
+        return None;
+    }
+    if !integer.chars().all(|ch| ch.is_ascii_digit())
+        || !fractional.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return None;
+    }
+    let digits = format!("{integer}{fractional}");
+    let mut coefficient = digits.parse::<i128>().ok()?;
+    if negative {
+        coefficient = -coefficient;
+    }
+    Some(ParsedConditionNumericLiteral {
+        raw: trimmed.to_string(),
+        negative,
+        integer_digits: integer.trim_start_matches('0').len(),
+        fractional_digits: fractional.trim_end_matches('0').len(),
+        scale: fractional.len(),
+        coefficient,
+    })
+}
+
+fn numeric_literal_fits_picture(literal: &ParsedConditionNumericLiteral, picture: &PicIr) -> bool {
+    if literal.negative && !picture.signed {
+        return false;
+    }
+    let integer_capacity = picture.digits.saturating_sub(picture.scale);
+    literal.integer_digits <= integer_capacity && literal.fractional_digits <= picture.scale
+}
+
+fn condition_numeric_literal_gt(
+    left: &ParsedConditionNumericLiteral,
+    right: &ParsedConditionNumericLiteral,
+) -> bool {
+    let scale = left.scale.max(right.scale);
+    let Some(left_factor) = checked_pow10_i128(scale.saturating_sub(left.scale)) else {
+        return false;
+    };
+    let Some(right_factor) = checked_pow10_i128(scale.saturating_sub(right.scale)) else {
+        return false;
+    };
+    left.coefficient.saturating_mul(left_factor) > right.coefficient.saturating_mul(right_factor)
+}
+
+fn checked_pow10_i128(exp: usize) -> Option<i128> {
+    let mut value = 1i128;
+    for _ in 0..exp {
+        value = value.checked_mul(10)?;
+    }
+    Some(value)
 }
 
 fn emit_data_clause_diagnostics(item: &DataDeclAst, diagnostics: &mut Vec<Diagnostic>) {
@@ -6007,7 +6519,8 @@ fn collect_valid_odo_tables(
         .iter()
         .filter_map(|item| {
             let occurs = item.occurs.as_ref()?;
-            if occurs_range_is_valid(occurs) && odo_counter_resolves_to_numeric(occurs, data_index)
+            if occurs_range_is_valid(occurs)
+                && resolve_valid_odo_counter(item, occurs, data_index).is_some()
             {
                 Some(item.qualified_name.clone())
             } else {
@@ -6028,14 +6541,11 @@ fn collect_odo_descriptors(
             if !occurs_range_is_valid(occurs) {
                 return None;
             }
-            if !odo_counter_resolves_to_numeric(occurs, data_index) {
-                return None;
-            }
-            let depending_on = occurs.depending_on.as_ref()?;
+            let counter = resolve_valid_odo_counter(item, occurs, data_index)?;
             let stride = item.byte_len.unwrap_or(0) / occurs.max.max(1);
             Some(OdoDescriptorIr {
                 table: item.qualified_name.clone(),
-                depending_on: depending_on.clone(),
+                depending_on: counter.qualified_name.clone(),
                 min: occurs.min,
                 max: occurs.max,
                 stride,
@@ -6044,17 +6554,57 @@ fn collect_odo_descriptors(
         .collect()
 }
 
-fn odo_counter_resolves_to_numeric(occurs: &OccursIr, data_index: &DataReferenceIndex<'_>) -> bool {
-    let Some(depending_on) = occurs.depending_on.as_ref() else {
-        return false;
-    };
-    match data_index.resolve_ref(&DataRefIr::simple(depending_on.clone())) {
-        DataResolution::Resolved(counter) => category_is_numeric(counter.value_category),
-        DataResolution::Special { category, .. } => category_is_numeric(category),
-        DataResolution::Missing | DataResolution::Ambiguous(_) | DataResolution::Condition(_) => {
-            false
+fn resolve_valid_odo_counter<'a>(
+    item: &DataItemIr,
+    occurs: &OccursIr,
+    data_index: &'a DataReferenceIndex<'a>,
+) -> Option<&'a DataItemIr> {
+    let depending_on = occurs.depending_on.as_ref()?;
+    match data_index.resolve_storage_preferred(&DataRefIr::simple(depending_on.clone())) {
+        DataResolution::Resolved(counter) => {
+            if category_is_numeric(counter.value_category)
+                && !odo_counter_is_inside_table(item, counter, data_index)
+            {
+                Some(counter)
+            } else {
+                None
+            }
         }
+        DataResolution::Missing | DataResolution::Ambiguous(_) | DataResolution::Condition(_) => {
+            None
+        }
+        DataResolution::Special { .. } => None,
     }
+}
+
+fn odo_counter_is_inside_table(
+    table: &DataItemIr,
+    counter: &DataItemIr,
+    data_index: &DataReferenceIndex<'_>,
+) -> bool {
+    if counter.qualified_name == table.qualified_name {
+        return true;
+    }
+    let table_key = table.qualified_name.to_ascii_uppercase();
+    let mut parent = counter
+        .parent
+        .as_ref()
+        .map(|value| value.to_ascii_uppercase());
+    while let Some(parent_key) = parent {
+        if parent_key == table_key {
+            return true;
+        }
+        let Some(parent_item) =
+            data_index.qualified_item_in_area(&parent_key, counter.storage_area)
+        else {
+            return false;
+        };
+        parent = parent_item
+            .parent
+            .as_ref()
+            .map(|value| value.to_ascii_uppercase());
+    }
+    false
 }
 
 fn validate_occurs_ranges(data_items: &[DataItemIr], diagnostics: &mut Vec<Diagnostic>) {
@@ -6101,8 +6651,22 @@ fn validate_odo_counters(
         else {
             continue;
         };
-        match data_index.resolve_ref(&DataRefIr::simple(depending_on.clone())) {
-            DataResolution::Resolved(counter) if category_is_numeric(counter.value_category) => {}
+        match data_index.resolve_storage_preferred(&DataRefIr::simple(depending_on.clone())) {
+            DataResolution::Resolved(counter)
+                if category_is_numeric(counter.value_category)
+                    && !odo_counter_is_inside_table(item, counter, data_index) => {}
+            DataResolution::Resolved(counter)
+                if odo_counter_is_inside_table(item, counter, data_index) =>
+            {
+                diagnostics.push(Diagnostic::error(
+                    "E_INVALID_ODO_DEPENDING_ON",
+                    format!(
+                        "OCCURS DEPENDING ON {} for {} must not reference a counter inside the same OCCURS table",
+                        depending_on, item.qualified_name
+                    ),
+                    item.span.clone(),
+                ))
+            }
             DataResolution::Resolved(counter) => diagnostics.push(Diagnostic::error(
                 "E_INVALID_ODO_DEPENDING_ON",
                 format!(
@@ -6137,11 +6701,14 @@ fn validate_odo_counters(
                 ),
                 item.span.clone(),
             )),
-            DataResolution::Special { category, .. } if category_is_numeric(category) => {}
-            DataResolution::Special { name, category, byte_len } => diagnostics.push(Diagnostic::error(
+            DataResolution::Special {
+                name,
+                category,
+                byte_len,
+            } => diagnostics.push(Diagnostic::error(
                 "E_INVALID_ODO_DEPENDING_ON",
                 format!(
-                    "OCCURS DEPENDING ON {} for {} resolved to special register {} ({:?}, {} bytes)",
+                    "OCCURS DEPENDING ON {} for {} must reference a numeric data item, but resolved to special register {} ({:?}, {} bytes)",
                     depending_on, item.qualified_name, name, category, byte_len
                 ),
                 item.span.clone(),
@@ -6152,18 +6719,18 @@ fn validate_odo_counters(
 
 struct DataReferenceIndex<'a> {
     by_name: BTreeMap<String, Vec<&'a DataItemIr>>,
-    by_qualified: BTreeMap<String, &'a DataItemIr>,
+    by_qualified: BTreeMap<String, Vec<&'a DataItemIr>>,
     conditions_by_name: BTreeMap<String, Vec<&'a ConditionNameIr>>,
-    conditions_by_qualified: BTreeMap<String, &'a ConditionNameIr>,
+    conditions_by_qualified: BTreeMap<String, Vec<&'a ConditionNameIr>>,
     redefined_bases: BTreeSet<String>,
 }
 
 impl<'a> DataReferenceIndex<'a> {
     fn new(items: &'a [DataItemIr], conditions: &'a [ConditionNameIr]) -> Self {
         let mut by_name = BTreeMap::<String, Vec<&DataItemIr>>::new();
-        let mut by_qualified = BTreeMap::<String, &DataItemIr>::new();
+        let mut by_qualified = BTreeMap::<String, Vec<&DataItemIr>>::new();
         let mut conditions_by_name = BTreeMap::<String, Vec<&ConditionNameIr>>::new();
-        let mut conditions_by_qualified = BTreeMap::<String, &ConditionNameIr>::new();
+        let mut conditions_by_qualified = BTreeMap::<String, Vec<&ConditionNameIr>>::new();
         let mut redefined_bases = BTreeSet::new();
         for item in items {
             if !item.addressable {
@@ -6173,21 +6740,24 @@ impl<'a> DataReferenceIndex<'a> {
                 .entry(item.name.to_ascii_uppercase())
                 .or_default()
                 .push(item);
-            by_qualified.insert(item.qualified_name.to_ascii_uppercase(), item);
+            by_qualified
+                .entry(item.qualified_name.to_ascii_uppercase())
+                .or_default()
+                .push(item);
         }
         for condition in conditions {
             conditions_by_name
                 .entry(condition.name.to_ascii_uppercase())
                 .or_default()
                 .push(condition);
-            conditions_by_qualified.insert(
-                format!(
+            conditions_by_qualified
+                .entry(format!(
                     "{}.{}",
                     condition.parent.to_ascii_uppercase(),
                     condition.name.to_ascii_uppercase()
-                ),
-                condition,
-            );
+                ))
+                .or_default()
+                .push(condition);
         }
         for item in items {
             let Some(base) = &item.redefines else {
@@ -6213,24 +6783,47 @@ impl<'a> DataReferenceIndex<'a> {
         self.resolve(&reference.normalized)
     }
 
+    fn resolve_storage_preferred(&self, reference: &DataRefIr) -> DataResolution<'a> {
+        match self.resolve_storage_only(&reference.normalized) {
+            DataResolution::Missing => self.resolve(&reference.normalized),
+            resolution => resolution,
+        }
+    }
+
     fn resolve(&self, reference: &str) -> DataResolution<'a> {
         let key = reference.to_ascii_uppercase();
-        if let Some(condition) = self.conditions_by_qualified.get(&key).copied() {
-            return DataResolution::Condition(condition);
+        if let Some(conditions) = self.conditions_by_qualified.get(&key).map(Vec::as_slice) {
+            return match conditions {
+                [condition] => DataResolution::Condition(condition),
+                matches => DataResolution::Ambiguous(
+                    matches
+                        .iter()
+                        .map(|condition| format!("{}.{}", condition.parent, condition.name))
+                        .collect(),
+                ),
+            };
         }
-        if let Some(item) = self.by_qualified.get(&key).copied() {
-            return DataResolution::Resolved(item);
+        if let Some(items) = self.by_qualified.get(&key).map(Vec::as_slice) {
+            return match items {
+                [item] => DataResolution::Resolved(item),
+                matches => DataResolution::Ambiguous(
+                    matches
+                        .iter()
+                        .map(|item| item.qualified_name.clone())
+                        .collect(),
+                ),
+            };
         }
         if key.contains('.') {
             let suffix = format!(".{key}");
             let condition_matches = self
                 .conditions_by_qualified
                 .iter()
-                .filter_map(|(qualified, condition)| {
+                .flat_map(|(qualified, conditions)| {
                     if qualified.ends_with(&suffix) {
-                        Some(*condition)
+                        conditions.clone()
                     } else {
-                        None
+                        Vec::new()
                     }
                 })
                 .collect::<Vec<_>>();
@@ -6250,11 +6843,11 @@ impl<'a> DataReferenceIndex<'a> {
             let matches = self
                 .by_qualified
                 .iter()
-                .filter_map(|(qualified, item)| {
+                .flat_map(|(qualified, items)| {
                     if qualified.ends_with(&suffix) {
-                        Some(*item)
+                        items.clone()
                     } else {
-                        None
+                        Vec::new()
                     }
                 })
                 .collect::<Vec<_>>();
@@ -6312,13 +6905,97 @@ impl<'a> DataReferenceIndex<'a> {
         }
     }
 
+    fn resolve_storage_only(&self, reference: &str) -> DataResolution<'a> {
+        let key = reference.to_ascii_uppercase();
+        if let Some(items) = self.by_qualified.get(&key).map(Vec::as_slice) {
+            return match items {
+                [item] => DataResolution::Resolved(item),
+                matches => DataResolution::Ambiguous(
+                    matches
+                        .iter()
+                        .map(|item| item.qualified_name.clone())
+                        .collect(),
+                ),
+            };
+        }
+        if key.contains('.') {
+            let suffix = format!(".{key}");
+            let matches = self
+                .by_qualified
+                .iter()
+                .flat_map(|(qualified, items)| {
+                    if qualified.ends_with(&suffix) {
+                        items.clone()
+                    } else {
+                        Vec::new()
+                    }
+                })
+                .collect::<Vec<_>>();
+            return match matches.as_slice() {
+                [item] => DataResolution::Resolved(item),
+                [] => DataResolution::Missing,
+                items => DataResolution::Ambiguous(
+                    items
+                        .iter()
+                        .map(|item| item.qualified_name.clone())
+                        .collect(),
+                ),
+            };
+        }
+        match self.by_name.get(&key).map(Vec::as_slice) {
+            Some([item]) => DataResolution::Resolved(item),
+            Some(items) => DataResolution::Ambiguous(
+                items
+                    .iter()
+                    .map(|item| item.qualified_name.clone())
+                    .collect(),
+            ),
+            None if key == PROGRAM_STATUS_REGISTER => DataResolution::Special {
+                name: PROGRAM_STATUS_REGISTER.to_string(),
+                category: ValueCategoryIr::Alphanumeric,
+                byte_len: 2,
+            },
+            None if key == TALLY_REGISTER => DataResolution::Special {
+                name: TALLY_REGISTER.to_string(),
+                category: ValueCategoryIr::NumericDisplay,
+                byte_len: 5,
+            },
+            None if key == DEBUG_ITEM_REGISTER => DataResolution::Special {
+                name: DEBUG_ITEM_REGISTER.to_string(),
+                category: ValueCategoryIr::Alphanumeric,
+                byte_len: 64,
+            },
+            None if key == DEBUG_CONTENTS_REGISTER => DataResolution::Special {
+                name: DEBUG_CONTENTS_REGISTER.to_string(),
+                category: ValueCategoryIr::Alphanumeric,
+                byte_len: 16,
+            },
+            None => DataResolution::Missing,
+        }
+    }
+
+    fn qualified_item_in_area(
+        &self,
+        qualified: &str,
+        storage_area: StorageAreaIr,
+    ) -> Option<&'a DataItemIr> {
+        let key = qualified.to_ascii_uppercase();
+        self.by_qualified.get(&key).and_then(|items| {
+            items
+                .iter()
+                .copied()
+                .find(|item| item.storage_area == storage_area)
+        })
+    }
+
     fn has_occurs_context(&self, item: &DataItemIr) -> bool {
         if item.occurs.is_some() {
             return true;
         }
         let mut parent = item.parent.as_ref().map(|value| value.to_ascii_uppercase());
         while let Some(parent_key) = parent {
-            let Some(parent_item) = self.by_qualified.get(&parent_key).copied() else {
+            let Some(parent_item) = self.qualified_item_in_area(&parent_key, item.storage_area)
+            else {
                 return false;
             };
             if parent_item.occurs.is_some() {
@@ -6343,7 +7020,8 @@ impl<'a> DataReferenceIndex<'a> {
         }
         let mut parent = item.parent.as_ref().map(|value| value.to_ascii_uppercase());
         while let Some(parent_key) = parent {
-            let Some(parent_item) = self.by_qualified.get(&parent_key).copied() else {
+            let Some(parent_item) = self.qualified_item_in_area(&parent_key, item.storage_area)
+            else {
                 return false;
             };
             if parent_item
@@ -6374,9 +7052,12 @@ impl<'a> DataReferenceIndex<'a> {
             return true;
         }
         let prefix = format!("{}.", item.qualified_name.to_ascii_uppercase());
-        self.by_qualified
-            .iter()
-            .any(|(qualified, child)| qualified.starts_with(&prefix) && has_odo(child))
+        self.by_qualified.iter().any(|(qualified, children)| {
+            qualified.starts_with(&prefix)
+                && children
+                    .iter()
+                    .any(|child| child.storage_area == item.storage_area && has_odo(child))
+        })
     }
 
     fn dynamic_occurs_items_in_subtree(&self, item: &DataItemIr) -> Vec<&'a DataItemIr> {
@@ -6391,12 +7072,18 @@ impl<'a> DataReferenceIndex<'a> {
         let prefix = format!("{}.", item_key);
         self.by_qualified
             .iter()
-            .filter_map(|(qualified, child)| {
-                if (qualified == &item_key || qualified.starts_with(&prefix)) && has_odo(child) {
-                    Some(*child)
-                } else {
-                    None
-                }
+            .flat_map(|(qualified, children)| {
+                let qualified_matches = qualified == &item_key || qualified.starts_with(&prefix);
+                children.iter().filter_map(move |child| {
+                    if qualified_matches
+                        && child.storage_area == item.storage_area
+                        && has_odo(child)
+                    {
+                        Some(*child)
+                    } else {
+                        None
+                    }
+                })
             })
             .collect()
     }
@@ -6405,15 +7092,19 @@ impl<'a> DataReferenceIndex<'a> {
         let prefix = format!("{}.", item.qualified_name.to_ascii_uppercase());
         self.by_qualified
             .iter()
-            .filter_map(|(qualified, child)| {
-                if qualified.starts_with(&prefix)
-                    && child.addressable
-                    && child.value_category != ValueCategoryIr::Group
-                {
-                    Some(*child)
-                } else {
-                    None
-                }
+            .flat_map(|(qualified, children)| {
+                let qualified_matches = qualified.starts_with(&prefix);
+                children.iter().filter_map(move |child| {
+                    if child.storage_area == item.storage_area
+                        && qualified_matches
+                        && child.addressable
+                        && child.value_category != ValueCategoryIr::Group
+                    {
+                        Some(*child)
+                    } else {
+                        None
+                    }
+                })
             })
             .collect()
     }
@@ -7252,7 +7943,8 @@ fn occurs_chain<'a>(
     }
     let mut parent = item.parent.as_ref().map(|value| value.to_ascii_uppercase());
     while let Some(parent_key) = parent {
-        let Some(parent_item) = data_index.by_qualified.get(&parent_key).copied() else {
+        let Some(parent_item) = data_index.qualified_item_in_area(&parent_key, item.storage_area)
+        else {
             break;
         };
         if parent_item.occurs.is_some() {
@@ -8287,12 +8979,18 @@ fn build_record_plan(
     record_length: usize,
     storage_items: &[StorageItemIr],
     redefines: &[RedefinesIr],
+    renames: &[RenamesIr],
     conditions: &[ConditionNameIr],
     platform_profile: PlatformProfile,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> RecordPlan {
+    let renames_aliases = renames
+        .iter()
+        .map(|rename| rename.renaming_item.as_str())
+        .collect::<HashSet<_>>();
     let fields = storage_items
         .iter()
+        .filter(|item| !renames_aliases.contains(item.qualified_name.as_str()))
         .map(|item| {
             let usage = record_usage(&item.usage);
             let picture = item.picture.as_ref().map(record_picture);
@@ -8317,6 +9015,7 @@ fn build_record_plan(
                 path: item.path.clone(),
                 offset: item.offset,
                 byte_len: item.byte_len,
+                storage_area: record_storage_area(item.storage_area),
                 usage,
                 picture,
                 occurs: item.occurs.as_ref().map(record_occurs),
@@ -8330,25 +9029,9 @@ fn build_record_plan(
         })
         .collect::<Vec<_>>();
 
-    let ranges = fields
-        .iter()
-        .filter(|field| {
-            !record_field_in_redefines_view(field, &fields)
-                && !matches!(field.usage, RecordUsage::Group)
-        })
-        .map(|field| CoverageRange {
-            kind: if field.occurs.is_some() {
-                CoverageKind::Occurs
-            } else if field.addressable {
-                CoverageKind::Field
-            } else {
-                CoverageKind::Filler
-            },
-            name: field.qualified_name.clone(),
-            offset: field.offset,
-            length: field.byte_len,
-        })
-        .collect::<Vec<_>>();
+    let coverage = record_layout_aggregate_coverage(record_length, &fields);
+    let coverage_by_area = record_area_coverages(&fields);
+    let coverage_by_layout = record_layout_coverages(&fields);
 
     RecordPlan {
         layout_mode: LayoutMode::Sequential,
@@ -8388,7 +9071,157 @@ fn build_record_plan(
                 source: source_ref(&condition.span),
             })
             .collect(),
-        coverage: coverage_summary(record_length, &ranges),
+        coverage,
+        coverage_by_area,
+        coverage_by_layout,
+    }
+}
+
+fn record_storage_area(area: StorageAreaIr) -> RecordStorageArea {
+    match area {
+        StorageAreaIr::WorkingStorage => RecordStorageArea::WorkingStorage,
+        StorageAreaIr::LocalStorage => RecordStorageArea::LocalStorage,
+        StorageAreaIr::Linkage => RecordStorageArea::Linkage,
+        StorageAreaIr::FileSection => RecordStorageArea::FileSection,
+        StorageAreaIr::Unknown => RecordStorageArea::Unknown,
+    }
+}
+
+fn record_area_coverages(fields: &[RecordField]) -> Vec<RecordAreaCoverage> {
+    let mut area_fields = BTreeMap::<u8, (RecordStorageArea, Vec<RecordField>)>::new();
+    for field in fields {
+        let key = record_storage_area_sort_key(&field.storage_area);
+        area_fields
+            .entry(key)
+            .or_insert_with(|| (field.storage_area.clone(), Vec::new()))
+            .1
+            .push(field.clone());
+    }
+    area_fields
+        .into_iter()
+        .map(|(_, (storage_area, fields))| {
+            let record_length = fields
+                .iter()
+                .map(|field| field.offset.saturating_add(field.byte_len))
+                .max()
+                .unwrap_or(0);
+            RecordAreaCoverage {
+                storage_area,
+                coverage: record_layout_aggregate_coverage(record_length, &fields),
+            }
+        })
+        .collect()
+}
+
+fn record_layout_coverages(fields: &[RecordField]) -> Vec<RecordLayoutCoverage> {
+    let mut layout_fields = BTreeMap::<String, (RecordStorageArea, Vec<RecordField>)>::new();
+    for field in fields {
+        layout_fields
+            .entry(field.layout_id.clone())
+            .or_insert_with(|| (field.storage_area.clone(), Vec::new()))
+            .1
+            .push(field.clone());
+    }
+    layout_fields
+        .into_iter()
+        .map(|(layout_id, (storage_area, fields))| {
+            let record_length = fields
+                .iter()
+                .map(|field| field.offset.saturating_add(field.byte_len))
+                .max()
+                .unwrap_or(0);
+            RecordLayoutCoverage {
+                layout_id,
+                storage_area,
+                coverage: coverage_summary(record_length, &record_coverage_ranges(&fields)),
+            }
+        })
+        .collect()
+}
+
+fn record_layout_aggregate_coverage(
+    record_length: usize,
+    fields: &[RecordField],
+) -> CoverageSummary {
+    let layout_coverages = record_layout_coverages(fields);
+    if layout_coverages.len() <= 1 {
+        return coverage_summary(record_length, &record_coverage_ranges(fields));
+    }
+
+    let covered_bytes = layout_coverages
+        .iter()
+        .map(|layout| layout.coverage.covered_bytes)
+        .max()
+        .unwrap_or(0);
+    let mut gaps = Vec::new();
+    let mut overlaps = Vec::new();
+    for layout in layout_coverages {
+        gaps.extend(layout.coverage.gaps.into_iter().map(|mut gap| {
+            gap.name = format!("{}:{}", layout.layout_id, gap.name);
+            gap
+        }));
+        overlaps.extend(layout.coverage.overlaps.into_iter().map(|mut overlap| {
+            overlap.name = format!("{}:{}", layout.layout_id, overlap.name);
+            overlap
+        }));
+    }
+
+    CoverageSummary {
+        record_length,
+        covered_bytes,
+        uncovered_bytes: record_length.saturating_sub(covered_bytes),
+        overlaps,
+        gaps,
+    }
+}
+
+fn record_coverage_ranges(fields: &[RecordField]) -> Vec<CoverageRange> {
+    fields
+        .iter()
+        .filter(|field| {
+            !record_field_in_redefines_view(field, fields)
+                && !record_field_has_occurs_parent(field, fields)
+                && (field.occurs.is_some() || !matches!(field.usage, RecordUsage::Group))
+        })
+        .map(|field| CoverageRange {
+            kind: if field.occurs.is_some() {
+                CoverageKind::Occurs
+            } else if field.addressable {
+                CoverageKind::Field
+            } else {
+                CoverageKind::Filler
+            },
+            name: field.qualified_name.clone(),
+            offset: field.offset,
+            length: field.byte_len,
+        })
+        .collect()
+}
+
+fn record_field_has_occurs_parent(field: &RecordField, fields: &[RecordField]) -> bool {
+    let mut parent = field.parent.as_deref();
+    while let Some(parent_name) = parent {
+        let Some(parent_field) = fields
+            .iter()
+            .find(|candidate| candidate.qualified_name == parent_name)
+        else {
+            return false;
+        };
+        if parent_field.occurs.is_some() {
+            return true;
+        }
+        parent = parent_field.parent.as_deref();
+    }
+    false
+}
+
+fn record_storage_area_sort_key(area: &RecordStorageArea) -> u8 {
+    match area {
+        RecordStorageArea::WorkingStorage => 0,
+        RecordStorageArea::LocalStorage => 1,
+        RecordStorageArea::Linkage => 2,
+        RecordStorageArea::FileSection => 3,
+        RecordStorageArea::Unknown => 4,
     }
 }
 
@@ -9390,6 +10223,72 @@ STOP RUN.
     }
 
     #[test]
+    fn top_level_redefines_shares_base_layout_coverage() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. REDEF01.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 BASE-REC.
+   05 BASE-FIELD PIC X(2).
+01 OVER-REC REDEFINES BASE-REC.
+   05 OVER-FIELD PIC X(2).
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("redef01.cbl", src);
+        let item = |name: &str| {
+            ir.storage
+                .items
+                .iter()
+                .find(|item| item.qualified_name == name)
+                .unwrap_or_else(|| panic!("missing storage item {name}"))
+        };
+
+        assert_eq!(ir.storage.redefines.len(), 1);
+        assert_eq!(item("BASE_REC").offset, 0);
+        assert_eq!(item("OVER_REC").offset, 0);
+        assert_eq!(item("BASE_REC.BASE_FIELD").layout_id, "BASE_REC");
+        assert_eq!(item("OVER_REC").layout_id, "BASE_REC");
+        assert_eq!(item("OVER_REC.OVER_FIELD").layout_id, "BASE_REC");
+        assert_eq!(ir.storage.record_length, 2);
+        assert_eq!(ir.storage.record_plan.coverage_by_layout.len(), 1);
+        assert!(ir.storage.record_plan.coverage.overlaps.is_empty());
+        assert!(ir.storage.record_plan.coverage.gaps.is_empty());
+        assert!(ir
+            .storage
+            .storage_cells
+            .iter()
+            .all(|cell| cell.key != "OVER_REC.OVER_FIELD"));
+    }
+
+    #[test]
+    fn redefines_larger_overlay_fails_closed() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. REDEFBIG.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 REC.
+   05 BASE-FIELD PIC X(2).
+   05 OVER-FIELD REDEFINES BASE-FIELD PIC X(3).
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("redef-big.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_UNSUPPORTED_REDEFINES_OVERLAY"
+                && diagnostic.message.contains("REC.OVER_FIELD")
+                && diagnostic.message.contains("3 bytes")
+                && diagnostic.message.contains("REC.BASE_FIELD")
+                && diagnostic.message.contains("2 bytes")
+        }));
+    }
+
+    #[test]
     fn group_redefines_with_non_identical_child_views_fails_closed() {
         let src = r#"
 IDENTIFICATION DIVISION.
@@ -9480,7 +10379,10 @@ STOP RUN.
         assert!(ir.storage.record_plan.coverage.overlaps.is_empty());
         assert!(ir.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "E_UNSUPPORTED_REDEFINES_OVERLAY"
-                && diagnostic.message.contains("REC.OVER_GRP.OVER_C")
+                && diagnostic.message.contains("REC.OVER_GRP")
+                && diagnostic.message.contains("4 bytes")
+                && diagnostic.message.contains("REC.BASE_GRP")
+                && diagnostic.message.contains("2 bytes")
         }));
     }
 
@@ -9535,6 +10437,114 @@ STOP RUN.
             diagnostic.code == "E_UNRESOLVED_ODO_DEPENDING_ON"
                 && diagnostic.message.contains("MISSING_CNT")
         }));
+    }
+
+    #[test]
+    fn odo_group_reserves_physical_max_storage_and_templates_one_occurrence() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. ODOMAX.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 REC.
+   05 ODO-COUNT PIC 9 VALUE 2.
+   05 GOOD-TABLE OCCURS 0 TO 4 DEPENDING ON ODO-COUNT.
+      10 GOOD-A PIC X VALUE "A".
+      10 GOOD-B PIC X(2) VALUE "BC".
+   05 TAIL PIC X VALUE "Z".
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("odo-max.cbl", src);
+        let item = |name: &str| {
+            ir.storage
+                .items
+                .iter()
+                .find(|item| item.qualified_name == name)
+                .unwrap_or_else(|| panic!("missing storage item {name}"))
+        };
+        let table = item("REC.GOOD_TABLE");
+        let tail = item("REC.TAIL");
+        let descriptor = ir
+            .odo_descriptors
+            .iter()
+            .find(|odo| odo.table == "REC.GOOD_TABLE")
+            .expect("ODO descriptor");
+        let template = ir
+            .storage
+            .odo_templates
+            .iter()
+            .find(|template| template.table == "REC.GOOD_TABLE")
+            .expect("ODO template");
+        let record_field = ir
+            .storage
+            .record_plan
+            .fields
+            .iter()
+            .find(|field| field.qualified_name == "REC.GOOD_TABLE")
+            .expect("record-plan ODO field");
+
+        assert_eq!(table.offset, 1);
+        assert_eq!(table.byte_len, 12);
+        assert_eq!(tail.offset, 13);
+        assert_eq!(ir.storage.record_length, 14);
+        assert_eq!(descriptor.depending_on, "REC.ODO_COUNT");
+        assert_eq!(descriptor.min, 0);
+        assert_eq!(descriptor.max, 4);
+        assert_eq!(descriptor.stride, 3);
+        assert_eq!(record_field.byte_len, 12);
+        assert_eq!(record_field.occurs.as_ref().expect("occurs").max, 4);
+        assert_eq!(ir.storage.record_plan.coverage.record_length, 14);
+        assert!(ir.storage.record_plan.coverage.gaps.is_empty());
+        assert!(ir.storage.record_plan.coverage.overlaps.is_empty());
+        assert_eq!(template.min, 0);
+        assert_eq!(template.max, 4);
+        assert_eq!(
+            template.fields,
+            vec![
+                ("REC.GOOD_TABLE.GOOD_A".to_string(), b"A".to_vec()),
+                ("REC.GOOD_TABLE.GOOD_B".to_string(), b"BC".to_vec())
+            ]
+        );
+    }
+
+    #[test]
+    fn odo_template_excludes_redefines_overlay_children() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. ODOREDEF.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 REC.
+   05 ODO-COUNT PIC 9 VALUE 1.
+   05 GOOD-TABLE OCCURS 0 TO 2 DEPENDING ON ODO-COUNT.
+      10 BASE-FIELD PIC X VALUE "A".
+      10 OVER-FIELD REDEFINES BASE-FIELD PIC X VALUE "B".
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("odo-redefines.cbl", src);
+        let template = ir
+            .storage
+            .odo_templates
+            .iter()
+            .find(|template| template.table == "REC.GOOD_TABLE")
+            .expect("ODO template");
+
+        assert_eq!(template.fields.len(), 1);
+        assert_eq!(
+            template.fields,
+            vec![("REC.GOOD_TABLE.BASE_FIELD".to_string(), b"A".to_vec())]
+        );
+        assert!(ir
+            .storage
+            .storage_cells
+            .iter()
+            .all(|cell| cell.key != "REC.GOOD_TABLE.OVER_FIELD"));
+        assert!(ir.storage.record_plan.coverage.gaps.is_empty());
+        assert!(ir.storage.record_plan.coverage.overlaps.is_empty());
     }
 
     #[test]
@@ -9616,6 +10626,100 @@ STOP RUN.
             .odo_templates
             .iter()
             .all(|template| template.table != "BAD_TABLE" && template.table != "MISS_TABLE"));
+    }
+
+    #[test]
+    fn odo_counter_rejects_special_registers() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. ODOSPECIAL.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 BAD-TABLE OCCURS 0 TO 3 DEPENDING ON TALLY PIC X.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("odo-special.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_ODO_DEPENDING_ON"
+                && diagnostic.message.contains("TALLY")
+                && diagnostic.message.contains("special register")
+        }));
+        assert!(ir
+            .odo_descriptors
+            .iter()
+            .all(|descriptor| descriptor.table != "BAD_TABLE"));
+        assert!(ir
+            .storage
+            .odo_templates
+            .iter()
+            .all(|template| template.table != "BAD_TABLE"));
+    }
+
+    #[test]
+    fn odo_counter_prefers_storage_item_over_same_named_condition_name() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. ODOSTORAGE.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 FLAG PIC X.
+   88 CNT VALUE "Y".
+01 CNT PIC 9.
+01 GOOD-TABLE OCCURS 0 TO 3 DEPENDING ON CNT PIC X.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("odo-storage.cbl", src);
+
+        assert!(ir.diagnostics.iter().all(|diagnostic| {
+            !(diagnostic.code == "E_INVALID_ODO_DEPENDING_ON" && diagnostic.message.contains("CNT"))
+        }));
+        let descriptor = ir
+            .odo_descriptors
+            .iter()
+            .find(|descriptor| descriptor.table == "GOOD_TABLE")
+            .expect("GOOD_TABLE descriptor");
+        assert_eq!(descriptor.depending_on, "CNT");
+        assert!(ir
+            .storage
+            .odo_templates
+            .iter()
+            .any(|template| template.table == "GOOD_TABLE"));
+    }
+
+    #[test]
+    fn odo_counter_rejects_counter_inside_own_table() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. ODOSELF.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 BAD-TABLE OCCURS 0 TO 3 DEPENDING ON CNT.
+   05 CNT PIC 9.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("odo-self.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_ODO_DEPENDING_ON"
+                && diagnostic.message.contains("CNT")
+                && diagnostic.message.contains("same OCCURS table")
+        }));
+        assert!(ir
+            .odo_descriptors
+            .iter()
+            .all(|descriptor| descriptor.table != "BAD_TABLE"));
+        assert!(ir
+            .storage
+            .odo_templates
+            .iter()
+            .all(|template| template.table != "BAD_TABLE"));
     }
 
     #[test]
@@ -9893,9 +10997,9 @@ PROGRAM-ID. AREARNGREN.
 DATA DIVISION.
 WORKING-STORAGE SECTION.
 01 WS-A PIC X.
-66 BAD-ALIAS RENAMES WS-A THRU LK-B.
 LINKAGE SECTION.
 01 LK-B PIC X.
+66 BAD-ALIAS RENAMES WS-A THRU LK-B.
 PROCEDURE DIVISION.
 MAIN.
 STOP RUN.
@@ -9912,6 +11016,36 @@ STOP RUN.
             .data_items
             .iter()
             .all(|item| item.qualified_name != "BAD_ALIAS"));
+        assert!(ir
+            .storage
+            .storage_bindings
+            .iter()
+            .all(|(name, _)| name != "BAD_ALIAS"));
+    }
+
+    #[test]
+    fn renames_redefines_overlay_fails_closed_without_alias() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. REDREN.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 REC.
+   05 BASE-FIELD PIC X.
+   05 OVER-FIELD REDEFINES BASE-FIELD PIC X.
+66 BAD-ALIAS RENAMES OVER-FIELD.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("redefines-renames.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_UNSUPPORTED_DATA_CLAUSE"
+                && diagnostic.message.contains("RENAMES")
+                && diagnostic.message.contains("REDEFINES")
+        }));
+        assert!(ir.storage.renames.is_empty());
         assert!(ir
             .storage
             .storage_bindings
@@ -9950,6 +11084,83 @@ STOP RUN.
             binding,
             StorageBindingIr::Group { children } if children == &vec!["REC.A".to_string(), "REC.B".to_string()]
         ));
+        assert!(ir
+            .storage
+            .record_plan
+            .fields
+            .iter()
+            .all(|field| field.qualified_name != "AB_ALIAS"));
+        assert_eq!(ir.storage.record_plan.coverage_by_layout.len(), 1);
+        assert!(ir.storage.record_plan.coverage.gaps.is_empty());
+        assert!(ir.storage.record_plan.coverage.overlaps.is_empty());
+    }
+
+    #[test]
+    fn renames_resolves_targets_scoped_to_preceding_record() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. SCOPEREN.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 A-REC.
+   05 FIELD-A PIC X.
+01 B-REC.
+   05 FIELD-A PIC X.
+66 B-ALIAS RENAMES FIELD-A.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("scope-renames.cbl", src);
+
+        assert!(ir.diagnostics.iter().all(|diagnostic| {
+            !(diagnostic.code == "E_UNSUPPORTED_DATA_CLAUSE"
+                && diagnostic.message.contains("B_ALIAS"))
+        }));
+        assert!(ir.storage.renames.iter().any(|rename| {
+            rename.renaming_item == "B_ALIAS" && rename.targets == vec!["B_REC.FIELD_A"]
+        }));
+        assert!(ir.storage.storage_bindings.iter().any(|(name, binding)| {
+            name == "B_ALIAS"
+                && matches!(
+                    binding,
+                    StorageBindingIr::Group { children }
+                        if children == &vec!["B_REC.FIELD_A".to_string()]
+                )
+        }));
+    }
+
+    #[test]
+    fn renames_ambiguous_target_fails_closed_without_alias() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. AMBIGREN.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 REC.
+   05 A-GRP.
+      10 FIELD-A PIC X.
+   05 B-GRP.
+      10 FIELD-A PIC X.
+66 BAD-ALIAS RENAMES FIELD-A.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("ambiguous-renames.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_UNSUPPORTED_DATA_CLAUSE"
+                && diagnostic.message.contains("RENAMES")
+                && diagnostic.message.contains("ambiguous")
+                && diagnostic.message.contains("REC.A_GRP.FIELD_A")
+                && diagnostic.message.contains("REC.B_GRP.FIELD_A")
+        }));
+        assert!(ir.storage.renames.is_empty());
+        assert!(ir
+            .data_items
+            .iter()
+            .all(|item| item.qualified_name != "BAD_ALIAS"));
     }
 
     #[test]
@@ -10892,6 +12103,40 @@ STOP RUN.
     }
 
     #[test]
+    fn duplicate_qualified_condition_names_fail_closed() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. DUPCOND.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 REC.
+   05 FLAG PIC X.
+      88 READY VALUE "Y".
+      88 READY VALUE "1".
+PROCEDURE DIVISION.
+MAIN.
+IF READY OF FLAG OF REC DISPLAY "Y" END-IF.
+STOP RUN.
+"#;
+        let ir = analyze_src("duplicate-condition.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_DUPLICATE_SYMBOL"
+                && diagnostic.message.contains("READY")
+                && diagnostic.message.contains("REC.FLAG")
+        }));
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_AMBIGUOUS_DATA"
+                && diagnostic.message.contains("READY OF FLAG OF REC")
+                && diagnostic.message.contains("REC.FLAG.READY")
+        }));
+        assert!(ir.semantic.references.iter().any(|reference| {
+            reference.raw == "READY OF FLAG OF REC"
+                && reference.status == ReferenceResolutionStatusIr::Ambiguous
+        }));
+    }
+
+    #[test]
     fn storage_area_layout_offsets_do_not_bleed_between_sections() {
         let src = r#"
 IDENTIFICATION DIVISION.
@@ -10924,6 +12169,99 @@ STOP RUN.
 
         assert_eq!(ws.offset, 0);
         assert_eq!(linkage.offset, 0);
+    }
+
+    #[test]
+    fn top_level_records_in_same_section_start_independent_layouts() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. MULTIREC.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 A-REC.
+   05 A-FIELD PIC X(2).
+01 B-REC.
+   05 B-FIELD PIC X(3).
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("multi-record.cbl", src);
+        let item = |name: &str| {
+            ir.storage
+                .items
+                .iter()
+                .find(|item| item.qualified_name == name)
+                .unwrap_or_else(|| panic!("missing storage item {name}"))
+        };
+
+        assert_eq!(item("A_REC").offset, 0);
+        assert_eq!(item("A_REC.A_FIELD").offset, 0);
+        assert_eq!(item("B_REC").offset, 0);
+        assert_eq!(item("B_REC.B_FIELD").offset, 0);
+        assert_eq!(item("A_REC.A_FIELD").layout_id, "A_REC");
+        assert_eq!(item("B_REC.B_FIELD").layout_id, "B_REC");
+        assert_eq!(ir.storage.record_length, 3);
+        assert!(ir.storage.record_plan.coverage.overlaps.is_empty());
+        assert_eq!(ir.storage.record_plan.coverage_by_layout.len(), 2);
+        assert!(ir
+            .storage
+            .record_plan
+            .coverage_by_layout
+            .iter()
+            .any(|coverage| coverage.layout_id == "A_REC"
+                && coverage.coverage.record_length == 2
+                && coverage.coverage.overlaps.is_empty()));
+        assert!(ir
+            .storage
+            .record_plan
+            .coverage_by_layout
+            .iter()
+            .any(|coverage| coverage.layout_id == "B_REC"
+                && coverage.coverage.record_length == 3
+                && coverage.coverage.overlaps.is_empty()));
+        assert!(ir
+            .storage
+            .record_plan
+            .coverage_by_area
+            .iter()
+            .all(|coverage| coverage.coverage.overlaps.is_empty()));
+    }
+
+    #[test]
+    fn level_77_items_start_independent_layouts() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. LEVEL77.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+77 FIRST-FLAG PIC X.
+77 SECOND-FIELD PIC X(4).
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("level77.cbl", src);
+        let first = ir
+            .storage
+            .items
+            .iter()
+            .find(|item| item.qualified_name == "FIRST_FLAG")
+            .expect("first level-77 item");
+        let second = ir
+            .storage
+            .items
+            .iter()
+            .find(|item| item.qualified_name == "SECOND_FIELD")
+            .expect("second level-77 item");
+
+        assert_eq!(first.offset, 0);
+        assert_eq!(second.offset, 0);
+        assert_eq!(first.layout_id, "FIRST_FLAG");
+        assert_eq!(second.layout_id, "SECOND_FIELD");
+        assert_eq!(ir.storage.record_length, 4);
+        assert!(ir.storage.record_plan.coverage.overlaps.is_empty());
+        assert_eq!(ir.storage.record_plan.coverage_by_layout.len(), 2);
     }
 
     #[test]
@@ -11069,6 +12407,36 @@ STOP RUN.
         assert_eq!(reference.target.as_deref(), Some("GROUP_B.ITEM"));
         assert!(reference.candidates.is_empty());
         assert!(!has_diagnostic(&ir, "E_AMBIGUOUS_DATA"));
+    }
+
+    #[test]
+    fn qualified_reference_duplicate_across_storage_areas_fails_closed() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. QUALAREA.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 REC.
+   05 FIELD PIC X.
+LINKAGE SECTION.
+01 REC.
+   05 FIELD PIC X.
+PROCEDURE DIVISION.
+MAIN.
+DISPLAY FIELD OF REC.
+STOP RUN.
+"#;
+        let ir = analyze_src("qual-area.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_AMBIGUOUS_DATA"
+                && diagnostic.message.contains("FIELD OF REC")
+                && diagnostic.message.contains("REC.FIELD")
+        }));
+        assert!(ir.semantic.references.iter().any(|reference| {
+            reference.raw == "FIELD OF REC"
+                && reference.status == ReferenceResolutionStatusIr::Ambiguous
+        }));
     }
 
     #[test]
@@ -11526,6 +12894,38 @@ STOP RUN.
             reference.raw == "WS-FLAG-OK"
                 && reference.category == Some(ValueCategoryIr::ConditionName)
                 && reference.status == ReferenceResolutionStatusIr::Resolved
+        }));
+    }
+
+    #[test]
+    fn relation_operand_prefers_storage_item_over_same_named_condition_name() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. RELSTORAGE.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 FLAG PIC X.
+   88 STATUS VALUE "Y".
+01 STATUS PIC X.
+PROCEDURE DIVISION.
+MAIN.
+IF STATUS = "Y" DISPLAY "Y" END-IF.
+STOP RUN.
+"#;
+        let ir = analyze_src("relation-storage.cbl", src);
+        let reference = ir
+            .semantic
+            .references
+            .iter()
+            .find(|reference| reference.raw == "STATUS")
+            .expect("status reference");
+
+        assert_eq!(reference.status, ReferenceResolutionStatusIr::Resolved);
+        assert_eq!(reference.target.as_deref(), Some("STATUS"));
+        assert_eq!(reference.category, Some(ValueCategoryIr::Alphanumeric));
+        assert!(ir.diagnostics.iter().all(|diagnostic| {
+            !(diagnostic.code == "E_CODEGEN_FIELD_CODEC"
+                && diagnostic.message.contains("condition-name STATUS"))
         }));
     }
 
@@ -12288,6 +13688,228 @@ STOP RUN.
                 ConditionValueIr::Single("25".to_string())
             ]
         );
+    }
+
+    #[test]
+    fn condition_name_alphanumeric_value_must_fit_parent_storage() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDLEN.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-FLAG PIC X(2).
+   88 TOO-LONG VALUE "YES".
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-len.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("TOO_LONG")
+                && diagnostic.message.contains("WS_FLAG")
+        }));
+    }
+
+    #[test]
+    fn condition_name_alphanumeric_range_endpoints_must_fit_parent_storage() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDRNGLEN.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-FLAG PIC X(2).
+   88 BAD-RANGE VALUE "A" THRU "YES".
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-range-len.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("BAD_RANGE")
+                && diagnostic.message.contains("YES")
+                && diagnostic.message.contains("WS_FLAG")
+        }));
+    }
+
+    #[test]
+    fn condition_name_alphanumeric_range_must_not_be_reversed() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDSTRREV.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-FLAG PIC X.
+   88 BAD-RANGE VALUE "Z" THRU "A".
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-string-rev.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("BAD_RANGE")
+                && diagnostic.message.contains("reversed")
+        }));
+    }
+
+    #[test]
+    fn condition_name_alphabetic_value_must_be_alphabetic() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDALPHA.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-ALPHA PIC A(2).
+   88 BAD-ALPHA VALUE "A1".
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-alpha.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("BAD_ALPHA")
+                && diagnostic.message.contains("not alphabetic")
+                && diagnostic.message.contains("WS_ALPHA")
+        }));
+    }
+
+    #[test]
+    fn condition_name_numeric_value_must_fit_parent_picture() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDNUM.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-NUM PIC 99V9.
+   88 TOO-LARGE VALUE 123.4.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-num.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("TOO_LARGE")
+                && diagnostic.message.contains("99V9")
+        }));
+    }
+
+    #[test]
+    fn condition_name_numeric_range_endpoints_must_fit_parent_picture() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDNUMRNG.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-NUM PIC 99.
+   88 BAD-RANGE VALUE 1 THRU 123.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-num-range.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("BAD_RANGE")
+                && diagnostic.message.contains("123")
+                && diagnostic.message.contains("99")
+        }));
+    }
+
+    #[test]
+    fn condition_name_numeric_value_must_be_numeric() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDNONNUM.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-NUM PIC 99.
+   88 BAD-VALUE VALUE "AA".
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-nonnumeric.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("BAD_VALUE")
+                && diagnostic.message.contains("not numeric")
+                && diagnostic.message.contains("WS_NUM")
+        }));
+    }
+
+    #[test]
+    fn condition_name_unsigned_numeric_parent_rejects_negative_value() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDNEG.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-NUM PIC 99.
+   88 NEGATIVE VALUE -1.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-neg.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("NEGATIVE")
+        }));
+    }
+
+    #[test]
+    fn condition_name_numeric_range_must_not_be_reversed() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDREV.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-NUM PIC 99.
+   88 BAD-RANGE VALUE 20 THRU 10.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-rev.cbl", src);
+
+        assert!(ir.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("BAD_RANGE")
+                && diagnostic.message.contains("reversed")
+        }));
+    }
+
+    #[test]
+    fn condition_name_numeric_value_allows_insignificant_zeroes() {
+        let src = r#"
+IDENTIFICATION DIVISION.
+PROGRAM-ID. CONDZERO.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-NUM PIC 99V9.
+   88 OK-VALUE VALUE 001.20.
+PROCEDURE DIVISION.
+MAIN.
+STOP RUN.
+"#;
+        let ir = analyze_src("cond-zero.cbl", src);
+
+        assert!(ir.diagnostics.iter().all(|diagnostic| {
+            !(diagnostic.code == "E_INVALID_CONDITION_VALUE"
+                && diagnostic.message.contains("OK_VALUE"))
+        }));
     }
 
     #[test]

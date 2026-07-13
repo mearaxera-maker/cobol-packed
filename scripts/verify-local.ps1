@@ -7,6 +7,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if (Get-Variable PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
+    $PSNativeCommandUseErrorActionPreference = $true
+}
 
 function Invoke-Step {
     param(
@@ -18,6 +21,9 @@ function Invoke-Step {
 
     Write-Host "==> $Name"
     & $Command
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Name failed with exit code $LASTEXITCODE"
+    }
 }
 
 function Test-Command {
@@ -25,8 +31,58 @@ function Test-Command {
     $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Get-PythonExecutable {
+    foreach ($Name in @("python", "python3")) {
+        if (Test-PythonCommand $Name @("-c", "import sys; raise SystemExit(0 if sys.version_info[0] == 3 else 1)")) {
+            return $Name
+        }
+    }
+    if (Test-Command "py") {
+        try {
+            $Executable = (& py -3 -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1).Trim()
+            if ($LASTEXITCODE -eq 0 -and $Executable -and (Test-Path $Executable)) {
+                return $Executable
+            }
+        } catch {
+            return $null
+        }
+    }
+    $null
+}
+
+function Test-PythonCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [string[]]$Arguments
+    )
+    if (-not (Test-Command $Name)) {
+        return $false
+    }
+    try {
+        & $Name @Arguments *> $null
+        return $LASTEXITCODE -eq 0
+    } catch {
+        return $false
+    }
+}
+
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
+
+$PythonExecutable = Get-PythonExecutable
+$WorkspaceArgs = @("--workspace", "--all-targets", "--all-features")
+$TestArgs = @("--workspace", "--all-features")
+if (-not $PythonExecutable) {
+    if ($Profile -eq "full") {
+        throw "full verification requires Python 3.x for the cobol-python workspace crate"
+    }
+    Write-Warning "Python 3.x not found; smoke profile excludes cobol-python"
+    $WorkspaceArgs = @("--workspace", "--all-targets", "--all-features", "--exclude", "cobol-python")
+    $TestArgs = @("--workspace", "--all-features", "--exclude", "cobol-python")
+} else {
+    $env:PYO3_PYTHON = $PythonExecutable
+}
 
 Invoke-Step "toolchain" {
     rustc --version
@@ -38,11 +94,11 @@ Invoke-Step "format" {
 }
 
 Invoke-Step "clippy" {
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
+    cargo clippy @WorkspaceArgs -- -D warnings
 }
 
 Invoke-Step "workspace tests" {
-    cargo test --workspace --all-features
+    cargo test @TestArgs
 }
 
 Invoke-Step "generated converter project compiles offline" {
@@ -67,7 +123,7 @@ if ($WithOracle -or $Profile -eq "full") {
         throw "GnuCOBOL oracle requested, but cobc is not on PATH"
     }
     Invoke-Step "GnuCOBOL oracle tests" {
-        cargo test --features converter --test oracle_gnucobol -- --nocapture
+        cargo test --features converter --test oracle_gnucobol -- --ignored --nocapture
     }
 }
 

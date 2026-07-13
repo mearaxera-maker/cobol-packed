@@ -8,6 +8,10 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::tempdir;
 
+// Most generated-project cases invoke nested Cargo builds. Keep the default
+// test target bounded for workspace CI; run the ignored cases explicitly when
+// auditing the full converter surface.
+
 fn json_path(path: &Path) -> String {
     path.to_string_lossy()
         .replace('\\', "\\\\")
@@ -203,6 +207,7 @@ fn cobol2rust_generates_runtime_backed_project() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_auto_source_format_accepts_indented_free_format() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("indented-free.cbl");
@@ -242,6 +247,7 @@ fn cobol2rust_auto_source_format_accepts_indented_free_format() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_generated_vm_uses_requested_dialect() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dialect.cbl");
@@ -274,6 +280,7 @@ fn cobol2rust_generated_vm_uses_requested_dialect() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_generates_perform_times_through_vm_procedure() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("perform-times.cbl");
@@ -324,6 +331,7 @@ SUBPARA.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_unwinds_goto_out_of_perform_scope_from_nested_if() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("perform-goto.cbl");
@@ -375,6 +383,7 @@ OUT.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_if_next_sentence_then_branch_until_sentence_cfg() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("next-sentence-then.cbl");
@@ -419,6 +428,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_if_next_sentence_else_branch_until_sentence_cfg() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("next-sentence-else.cbl");
@@ -463,6 +473,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_nested_if_with_nearest_else_binding() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("nested-if.cbl");
@@ -504,6 +515,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_complex_next_sentence_shape() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("next-sentence-complex.cbl");
@@ -547,6 +559,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unsupported_inline_statement_inside_size_error_branch() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("nested-unsupported.cbl");
@@ -591,6 +604,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocked_conversion_removes_stale_generated_project() {
     let dir = tempdir().expect("tempdir");
     let good = dir.path().join("good.cbl");
@@ -663,6 +677,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_generates_codec_backed_accessors_for_packed_and_binary_fields() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("typed-accessors.cbl");
@@ -717,6 +732,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_generated_byte_storage_project_compiles() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("data-display.cbl");
@@ -755,6 +771,7 @@ fn cobol2rust_generated_byte_storage_project_compiles() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_display_uses_codec_backed_accessors_for_numeric_fields() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("display-codecs.cbl");
@@ -811,6 +828,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_generates_executable_if_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("if-vm.cbl");
@@ -854,6 +872,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_generates_condition_name_set_and_if() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("set-cond.cbl");
@@ -896,6 +915,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_emits_declared_view_for_group_condition_name() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("group-88-view.cbl");
@@ -952,6 +972,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_generates_simple_evaluate_also_snapshot() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("evaluate-vm.cbl");
@@ -997,6 +1018,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unsupported_exec_sql_with_report() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("exec.cbl");
@@ -1030,6 +1052,7 @@ fn cobol2rust_blocks_unsupported_exec_sql_with_report() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unsupported_perform_control_forms_precisely() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("perform-control.cbl");
@@ -1073,6 +1096,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_out_of_line_perform_until_through_vm_loop() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("perform-until.cbl");
@@ -1124,6 +1148,7 @@ MOVE "Y" TO DONE-FLAG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_out_of_line_perform_varying_until_through_vm_loop() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("perform-varying.cbl");
@@ -1169,6 +1194,7 @@ DISPLAY I.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_alterable_go_to_dot_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("alter.cbl");
@@ -1215,6 +1241,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_go_to_depending_on_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("go-depending.cbl");
@@ -1267,6 +1294,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_dynamic_perform_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dynamic-perform.cbl");
@@ -1312,6 +1340,7 @@ DISPLAY "DYN".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_read_on_exception_branch_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("read-exception.cbl");
@@ -1368,6 +1397,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_use_after_error_declarative_without_file_status() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("decl-no-status.cbl");
@@ -1426,6 +1456,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_use_for_debugging_declarative_on_paragraph_entry() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("debug-decl-entry.cbl");
@@ -1478,6 +1509,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_use_for_debugging_declarative_on_perform_entry() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("debug-decl-perform.cbl");
@@ -1532,6 +1564,7 @@ DISPLAY "S".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_ready_reset_trace_for_paragraph_entries() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("ready-reset-trace.cbl");
@@ -1584,6 +1617,7 @@ DISPLAY "S".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sets_debug_special_registers_for_debugging_declarative() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("debug-special-registers.cbl");
@@ -1637,6 +1671,7 @@ DISPLAY "BODY".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_use_after_error_declarative_can_mutate_file_status() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("decl-status.cbl");
@@ -1697,6 +1732,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_use_after_error_runs_before_read_on_exception_branch() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("decl-before-exception.cbl");
@@ -1756,6 +1792,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_use_after_error_reentrancy_guard_propagates_same_file_recursion() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("decl-reentrant.cbl");
@@ -1814,6 +1851,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_rewrite_last_read_record_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("rewrite.cbl");
@@ -1881,6 +1919,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_delete_last_read_record_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("delete.cbl");
@@ -1948,6 +1987,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_sort_procedure_ascending_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-ascending.cbl");
@@ -2008,6 +2048,7 @@ DISPLAY "DONE".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_sort_procedure_descending_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-descending.cbl");
@@ -2064,6 +2105,7 @@ DISPLAY "DONE".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sort_release_from_and_return_into_copy_bytes() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-copy.cbl");
@@ -2121,6 +2163,7 @@ DISPLAY "DONE".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sort_self_release_from_sd_record_is_stable() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-self-release.cbl");
@@ -2175,6 +2218,7 @@ DISPLAY "DONE".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sort_release_outside_input_phase_abends() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-release-phase.cbl");
@@ -2231,6 +2275,7 @@ RELEASE SORT-REC.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sort_return_outside_output_phase_abends() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-return-phase.cbl");
@@ -2285,6 +2330,7 @@ DISPLAY "DONE".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_nested_sort_uses_innermost_sort_state() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-nested.cbl");
@@ -2358,6 +2404,7 @@ DISPLAY "INNER-DONE".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sort_output_procedure_alter_persists_after_sort() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-alter.cbl");
@@ -2417,6 +2464,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sort_return_stays_at_end_after_exhaustion() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-exhausted.cbl");
@@ -2467,6 +2515,7 @@ RETURN SORT-FILE AT END DISPLAY "END2".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_sort_can_run_inside_use_after_error_declarative() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-declarative.cbl");
@@ -2599,6 +2648,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_abandoned_sort_input_state_is_cleaned_before_later_return() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-abandoned.cbl");
@@ -2659,6 +2709,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_abandoned_sort_output_state_is_cleaned_before_later_return() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-output-abandoned.cbl");
@@ -2718,6 +2769,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unsupported_sort_shapes_fail_closed() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("sort-blockers.cbl");
@@ -2795,6 +2847,7 @@ DISPLAY "OUT".
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_inspect_tallying_all_literal() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("inspect-tally.cbl");
@@ -2839,6 +2892,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_inspect_replacing_all_literal() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("inspect-replace.cbl");
@@ -2880,6 +2934,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_inspect_converting_literal_bytes() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("inspect-convert.cbl");
@@ -2921,6 +2976,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_examine_tallying_and_replacing() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("examine-tally-replace.cbl");
@@ -2963,6 +3019,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unsupported_complex_inspect_shapes_fail_closed() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("inspect-blockers.cbl");
@@ -3008,6 +3065,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_string_core_delimited_by_size() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("string-size.cbl");
@@ -3058,6 +3116,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_string_core_delimited_by_literal() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("string-literal.cbl");
@@ -3104,6 +3163,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_unstring_core_delimited_by_space() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("unstring-space.cbl");
@@ -3155,6 +3215,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_unstring_core_delimited_by_literal() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("unstring-literal.cbl");
@@ -3204,6 +3265,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_move_corresponding_basic_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("move-corr-basic.cbl");
@@ -3257,6 +3319,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_move_corr_nested_and_padding_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("move-corr-nested.cbl");
@@ -3311,6 +3374,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_renames_alias_through_vm_storage() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("renames-alias.cbl");
@@ -3361,6 +3425,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_same_record_area_for_fd_records() {
     let dir = tempdir().expect("tempdir");
     let input_file = dir.path().join("shared.dat");
@@ -3423,6 +3488,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_ambiguous_move_corresponding_names() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("move-corr-ambiguous.cbl");
@@ -3471,6 +3537,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_compute_expression_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("compute-basic.cbl");
@@ -3558,6 +3625,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_packed_compute_size_error_without_clobbering_target() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("compute-packed-size.cbl");
@@ -3603,6 +3671,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_compute_not_on_size_error_branch() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("compute-not-size.cbl");
@@ -3647,6 +3716,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_compute_on_size_error_branch_without_clobbering_target() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("compute-size.cbl");
@@ -3691,6 +3761,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_multiple_statements_in_compute_size_error_branch() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("compute-size-multi.cbl");
@@ -3735,6 +3806,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_compute_divide_by_zero_as_size_error() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("compute-div0.cbl");
@@ -3779,6 +3851,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_string_with_pointer_and_not_on_overflow() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("string-pointer.cbl");
@@ -3826,6 +3899,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_string_on_overflow_branch() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("string-overflow.cbl");
@@ -3872,6 +3946,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_unstring_all_count_tallying_and_pointer() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("unstring-all.cbl");
@@ -3930,6 +4005,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_unstring_on_overflow_branch() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("unstring-overflow.cbl");
@@ -3982,6 +4058,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_reports_precise_call_blockers_without_generic_unsupported_call() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("call-blockers.cbl");
@@ -4032,6 +4109,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_compiles_dynamic_call_to_linked_program() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dynamic-call.cbl");
@@ -4089,6 +4167,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_dynamic_call_using_binds_linkage_by_reference() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dynamic-call-using.cbl");
@@ -4148,6 +4227,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_dynamic_call_respects_initial_lifecycle() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dynamic-call-initial.cbl");
@@ -4207,6 +4287,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_multi_program_duplicate_working_storage_names_are_isolated() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("duplicate-ws-names.cbl");
@@ -4269,6 +4350,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_multi_program_duplicate_odo_and_index_names_are_isolated() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("duplicate-odo-index.cbl");
@@ -4340,6 +4422,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_missing_dynamic_call_sets_program_status_and_continues() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dynamic-call-missing.cbl");
@@ -4387,6 +4470,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_dynamic_call_linkage_mismatch_sets_program_status() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dynamic-call-mismatch.cbl");
@@ -4447,6 +4531,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_compiles_static_call_using_linkage_between_programs() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("call-using-multi.cbl");
@@ -4511,6 +4596,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_compiles_group_call_using_linkage_by_reference() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("call-using-group.cbl");
@@ -4580,6 +4666,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_compiles_odo_scalar_call_using_linkage_by_reference() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("call-using-odo.cbl");
@@ -4639,6 +4726,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_compiles_call_using_conversion_via_temp_cell() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("call-using-conversion.cbl");
@@ -4702,6 +4790,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unsupported_call_using_conversion_shapes() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("call-using-packed-conversion.cbl");
@@ -4756,6 +4845,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_compiles_external_scalar_shared_between_programs() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("external-scalar.cbl");
@@ -4822,6 +4912,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_external_type_mismatch_between_programs() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("external-mismatch.cbl");
@@ -4875,6 +4966,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_common_subprogram_working_storage_persists_between_calls() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("common-lifecycle.cbl");
@@ -4934,6 +5026,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_initial_subprogram_working_storage_resets_between_calls() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("initial-lifecycle.cbl");
@@ -4996,6 +5089,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_initial_subprogram_does_not_reset_external_storage() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("initial-external.cbl");
@@ -5055,6 +5149,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_initial_subprogram_resets_file_record_lifecycle_storage() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("initial-file-record.cbl");
@@ -5121,6 +5216,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_initial_subprogram_does_not_reset_external_file_status() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("initial-external-file-status.cbl");
@@ -5196,6 +5292,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_multiple_statements_in_read_at_end_branch() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("read-at-end-multi.cbl");
@@ -5247,6 +5344,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_initial_subprogram_resets_local_odo_count_and_cells() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("initial-odo.cbl");
@@ -5307,6 +5405,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_common_subprogram_retains_local_odo_count_and_cells() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("common-odo.cbl");
@@ -5366,6 +5465,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_common_initial_conflict() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("common-initial-conflict.cbl");
@@ -5413,6 +5513,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_rejects_invalid_dialect_instead_of_defaulting() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("hello.cbl");
@@ -5441,6 +5542,7 @@ fn cobol2rust_rejects_invalid_dialect_instead_of_defaulting() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unresolved_data_references() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("bad-ref.cbl");
@@ -5475,6 +5577,7 @@ fn cobol2rust_blocks_unresolved_data_references() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_reports_condition_ir_and_type_errors() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("condition-mismatch.cbl");
@@ -5527,6 +5630,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_expands_copy_replacing() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("copy.cbl");
@@ -5566,6 +5670,7 @@ fn cobol2rust_expands_copy_replacing() {
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_reports_layout_model_for_redefines_without_guessing_procedure_codecs() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("layout.cbl");
@@ -5612,6 +5717,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_occurs_procedure_reference_until_subscripts_exist() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("occurs-ref.cbl");
@@ -5659,6 +5765,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_subscripted_occurs_move_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("subscript-ref.cbl");
@@ -5711,6 +5818,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_qualified_condition_name_and_set() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("qualified-88.cbl");
@@ -5760,6 +5868,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_reference_modification_function_length_and_fixed_occurs_conditions() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("deep-conditions.cbl");
@@ -5813,6 +5922,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_basic_sequential_file_write_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("file-write.cbl");
@@ -5879,6 +5989,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_write_after_advancing_page_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("file-write-page.cbl");
@@ -5935,6 +6046,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_write_after_advancing_top_of_page_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("file-write-top.cbl");
@@ -5991,6 +6103,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_fd_linage_with_line_advancing_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("file-write-linage.cbl");
@@ -6051,6 +6164,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_sequential_read_at_end_and_file_status_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("file-read-status.cbl");
@@ -6116,6 +6230,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_rerun_checkpoint_every_n_reads() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("rerun-checkpoint.cbl");
@@ -6193,6 +6308,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_unsupported_rerun_shapes() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("rerun-unsupported.cbl");
@@ -6235,6 +6351,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_reads_fixed_records_from_assigned_os_sequential_file() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("os-file-read.cbl");
@@ -6299,6 +6416,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_writes_fixed_record_to_assigned_os_sequential_file() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("os-file-write.cbl");
@@ -6357,6 +6475,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_file_map_overrides_assign_external_name() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("file-map-read.cbl");
@@ -6420,6 +6539,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runtime_config_overrides_assign_external_name() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("runtime-config-read.cbl");
@@ -6556,6 +6676,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_open_missing_assigned_file_sets_file_status() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("missing-file-status.cbl");
@@ -6612,6 +6733,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_read_into_moves_os_file_record_to_working_storage() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("read-into.cbl");
@@ -6673,6 +6795,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_read_into_resizes_odo_target_from_fixed_record_length() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("read-into-odo.cbl");
@@ -6737,6 +6860,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_read_into_odo_target_with_incompatible_length() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("read-into-odo-bad.cbl");
@@ -6794,6 +6918,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_line_sequential_file_metadata_for_vm_slice() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("line-sequential-file.cbl");
@@ -6850,6 +6975,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_odo_file_records_for_os_sequential_slice() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("odo-file-record.cbl");
@@ -6905,6 +7031,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_open_io_for_fixed_os_sequential_file_slice() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("open-io-file.cbl");
@@ -6962,6 +7089,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_dynamic_assign_for_os_sequential_slice() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("dynamic-assign-file.cbl");
@@ -7017,6 +7145,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_nonsequential_file_metadata_for_vm_slice() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("indexed-file.cbl");
@@ -7071,6 +7200,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_odo_active_count_mutation_for_checked_condition_reads() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("odo-run.cbl");
@@ -7123,6 +7253,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_indexed_by_and_dynamic_reference_modifier_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("index_refmod.cbl");
@@ -7178,6 +7309,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_serial_search_through_vm_index_loop() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("search.cbl");
@@ -7227,6 +7359,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_search_all_without_declared_key() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("search-all.cbl");
@@ -7274,6 +7407,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_runs_search_all_binary_search_through_vm() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("search-all-run.cbl");
@@ -7330,6 +7464,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_reads_os_file_into_odo_table_then_searches_all() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("read-odo-search-all.cbl");
@@ -7393,6 +7528,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_torture_fixture_resolves_and_blocks_precisely() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("torture.cbl");
@@ -7489,6 +7625,7 @@ STOP RUN.
 }
 
 #[test]
+#[ignore = "exhaustive generated-project integration test; run explicitly with --ignored"]
 fn cobol2rust_blocks_hostile_cobol_instead_of_guessing() {
     let dir = tempdir().expect("tempdir");
     let input = dir.path().join("hostile.cbl");

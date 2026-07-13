@@ -5,8 +5,9 @@ edition = "2021"
 rust-version = "1.74"
 license = "MIT OR Apache-2.0"
 description = "Rust-native COBOL lexer and parser for the converter MVP"
+repository = "https://github.com/mearaxera-maker/cobol-packed"
 
 [dependencies]
-cobol-ir = { path = "../cobol-ir" }
-cobol-text = { path = "../cobol-text" }
+cobol-ir = { version = "0.1.0", path = "../cobol-ir" }
+cobol-text = { version = "0.1.0", path = "../cobol-text" }
 thiserror = "2.0"

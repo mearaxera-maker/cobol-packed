@@ -5,6 +5,7 @@ edition = "2021"
 rust-version = "1.74"
 license = "MIT OR Apache-2.0"
 description = "Runtime support for generated COBOL-to-Rust programs"
+repository = "https://github.com/mearaxera-maker/cobol-packed"
 
 [dependencies]
 rust_decimal = "1.36"

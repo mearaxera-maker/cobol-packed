@@ -1259,18 +1259,18 @@ fn parse_data_clauses(clauses: &str) -> Vec<DataClauseAst> {
                 out.push(DataClauseAst::AnyLength);
                 idx += 1;
             }
-            "ANY" => {
+            "ANY"
                 if parts
                     .get(idx + 1)
                     .map(|word| data_clause_word_eq(word, "LENGTH"))
-                    .unwrap_or(false)
-                {
-                    out.push(DataClauseAst::AnyLength);
-                    idx += 2;
-                } else {
-                    out.push(DataClauseAst::Other(parts[idx].to_string()));
-                    idx += 1;
-                }
+                    .unwrap_or(false) =>
+            {
+                out.push(DataClauseAst::AnyLength);
+                idx += 2;
+            }
+            "ANY" => {
+                out.push(DataClauseAst::Other(parts[idx].to_string()));
+                idx += 1;
             }
             _ => {
                 out.push(DataClauseAst::Other(parts[idx].to_string()));

@@ -145,6 +145,7 @@ fn assert_oracle_equivalence(fixture: OracleFixture) {
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_if_and_88_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "if_88",
@@ -170,6 +171,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_dynamic_call_using_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "dynamic_call_using",
@@ -204,6 +206,7 @@ END PROGRAM SUBPROG.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_fixed_sequential_read_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "fixed_seq_read",
@@ -236,6 +239,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_go_to_depending_on_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "go_to_depending_on",
@@ -266,6 +270,7 @@ THREE.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_string_delimited_by_size_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "string_size",
@@ -290,6 +295,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_numeric_display_codec_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "numeric_display_codec",
@@ -311,6 +317,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_file_status_missing_input_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "file_status_missing",
@@ -342,6 +349,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_sort_procedure_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "sort_procedure",
@@ -382,6 +390,7 @@ SORT-DONE.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_search_serial_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "search_serial",
@@ -411,6 +420,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_odo_table_access_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "odo_table_access",
@@ -437,6 +447,7 @@ MAIN.
 }
 
 #[test]
+#[ignore = "external GnuCOBOL oracle fixture; run explicitly with --ignored"]
 fn gnucobol_oracle_fixed_format_copy_when_cobc_is_available() {
     assert_oracle_equivalence(OracleFixture {
         name: "fixed_copy",

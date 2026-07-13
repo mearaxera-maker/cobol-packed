@@ -70,6 +70,15 @@ pub struct SourceRef {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RecordStorageArea {
+    WorkingStorage,
+    LocalStorage,
+    Linkage,
+    FileSection,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordField {
     pub layout_id: String,
     pub name: String,
@@ -77,6 +86,7 @@ pub struct RecordField {
     pub path: Vec<String>,
     pub offset: usize,
     pub byte_len: usize,
+    pub storage_area: RecordStorageArea,
     pub usage: RecordUsage,
     pub picture: Option<RecordPicture>,
     pub occurs: Option<RecordOccurs>,
@@ -141,6 +151,19 @@ pub struct CoverageSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordAreaCoverage {
+    pub storage_area: RecordStorageArea,
+    pub coverage: CoverageSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordLayoutCoverage {
+    pub layout_id: String,
+    pub storage_area: RecordStorageArea,
+    pub coverage: CoverageSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordPlan {
     pub layout_mode: LayoutMode,
     pub platform_profile: PlatformProfile,
@@ -149,6 +172,8 @@ pub struct RecordPlan {
     pub redefines: Vec<RecordRedefines>,
     pub condition_names: Vec<RecordConditionName>,
     pub coverage: CoverageSummary,
+    pub coverage_by_area: Vec<RecordAreaCoverage>,
+    pub coverage_by_layout: Vec<RecordLayoutCoverage>,
 }
 
 impl Default for RecordPlan {
@@ -167,6 +192,8 @@ impl Default for RecordPlan {
                 overlaps: Vec::new(),
                 gaps: Vec::new(),
             },
+            coverage_by_area: Vec::new(),
+            coverage_by_layout: Vec::new(),
         }
     }
 }
@@ -204,6 +231,8 @@ pub enum SignPolicy {
 pub enum RecordCodecError {
     #[error("field length {actual} does not match expected length {expected}")]
     InvalidLength { expected: usize, actual: usize },
+    #[error("packed decimal total digit count must be 1..=18, got {total_digits}")]
+    InvalidPackedDigitCount { total_digits: usize },
     #[error("invalid packed decimal digit nibble 0x{nibble:X}")]
     InvalidPackedDigit { nibble: u8 },
     #[error("invalid packed decimal sign nibble 0x{nibble:X}")]
@@ -240,6 +269,14 @@ pub enum RecordCodecError {
 
 pub fn packed_decimal_len(total_digits: usize) -> usize {
     (total_digits + 2) / 2
+}
+
+fn validate_packed_decimal_digits(total_digits: usize) -> Result<(), RecordCodecError> {
+    if (1..=18).contains(&total_digits) {
+        Ok(())
+    } else {
+        Err(RecordCodecError::InvalidPackedDigitCount { total_digits })
+    }
 }
 
 pub fn binary_width_from_digits(digits: usize) -> usize {
@@ -400,6 +437,7 @@ pub fn decode_packed_decimal(
     scale: u32,
     signed: bool,
 ) -> Result<Decimal, RecordCodecError> {
+    validate_packed_decimal_digits(total_digits)?;
     let expected = packed_decimal_len(total_digits);
     if bytes.len() != expected {
         return Err(RecordCodecError::InvalidLength {
@@ -420,12 +458,7 @@ pub fn decode_packed_decimal(
             } else if high != 0 {
                 return Err(RecordCodecError::InvalidPackedDigit { nibble: high });
             }
-            let negative = match low {
-                0xC | 0xF => false,
-                0xD if signed => true,
-                0xD => return Err(RecordCodecError::InvalidPackedSign { nibble: low }),
-                other => return Err(RecordCodecError::InvalidPackedSign { nibble: other }),
-            };
+            let negative = packed_sign_is_negative(low, signed)?;
             if negative {
                 mantissa = -mantissa;
             }
@@ -449,6 +482,7 @@ pub fn encode_packed_decimal(
     scale: u32,
     signed: bool,
 ) -> Result<Vec<u8>, RecordCodecError> {
+    validate_packed_decimal_digits(total_digits)?;
     let expected = packed_decimal_len(total_digits);
     let mut out = vec![0u8; expected];
     encode_packed_decimal_into(value, total_digits, scale, signed, &mut out)?;
@@ -462,9 +496,7 @@ pub fn encode_packed_decimal_into(
     signed: bool,
     out: &mut [u8],
 ) -> Result<(), RecordCodecError> {
-    if total_digits == 0 {
-        return Err(RecordCodecError::PackedDecimalOverflow { total_digits });
-    }
+    validate_packed_decimal_digits(total_digits)?;
     let expected = packed_decimal_len(total_digits);
     if out.len() != expected {
         return Err(RecordCodecError::InvalidLength {
@@ -500,7 +532,11 @@ fn scaled_packed_mantissa(
         return Err(RecordCodecError::NegativePackedUnsigned);
     }
 
-    let mut mantissa = raw_mantissa.abs();
+    let mut mantissa = if raw_mantissa < 0 {
+        -raw_mantissa
+    } else {
+        raw_mantissa
+    };
     let current_scale = value.scale();
     if scale >= current_scale {
         let factor = pow10_i128(scale - current_scale)?;
@@ -576,6 +612,15 @@ fn push_digit(mantissa: i128, digit: u8) -> Result<i128, RecordCodecError> {
         .checked_mul(10)
         .and_then(|value| value.checked_add(i128::from(digit)))
         .ok_or(RecordCodecError::PackedMantissaOverflow)
+}
+
+fn packed_sign_is_negative(sign: u8, signed: bool) -> Result<bool, RecordCodecError> {
+    match sign {
+        0xA | 0xC | 0xE | 0xF => Ok(false),
+        0xB | 0xD if signed => Ok(true),
+        0xB | 0xD => Err(RecordCodecError::InvalidPackedSign { nibble: sign }),
+        other => Err(RecordCodecError::InvalidPackedSign { nibble: other }),
+    }
 }
 
 pub fn decode_binary_integer(
@@ -891,6 +936,47 @@ mod tests {
             decode_packed_decimal(&[0x12, 0x34, 0x5D], 5, 0, true).unwrap(),
             Decimal::new(-12345, 0)
         );
+    }
+
+    #[test]
+    fn decodes_valid_internal_decimal_sign_family() {
+        for sign in [0x0A, 0x0C, 0x0E, 0x0F] {
+            assert_eq!(
+                decode_packed_decimal(&[0x12, 0x30 | sign], 3, 0, true).unwrap(),
+                Decimal::new(123, 0)
+            );
+            assert_eq!(
+                decode_packed_decimal(&[0x12, 0x30 | sign], 3, 0, false).unwrap(),
+                Decimal::new(123, 0)
+            );
+        }
+
+        for sign in [0x0B, 0x0D] {
+            assert_eq!(
+                decode_packed_decimal(&[0x12, 0x30 | sign], 3, 0, true).unwrap(),
+                Decimal::new(-123, 0)
+            );
+            assert!(matches!(
+                decode_packed_decimal(&[0x12, 0x30 | sign], 3, 0, false),
+                Err(RecordCodecError::InvalidPackedSign { nibble }) if nibble == sign
+            ));
+        }
+    }
+
+    #[test]
+    fn packed_decimal_rejects_invalid_digit_counts() {
+        assert!(matches!(
+            decode_packed_decimal(&[0x0C], 0, 0, true),
+            Err(RecordCodecError::InvalidPackedDigitCount { total_digits: 0 })
+        ));
+        assert!(matches!(
+            encode_packed_decimal(Decimal::ZERO, 0, 0, true),
+            Err(RecordCodecError::InvalidPackedDigitCount { total_digits: 0 })
+        ));
+        assert!(matches!(
+            encode_packed_decimal_into(Decimal::ZERO, 19, 0, true, &mut [0u8; 10]),
+            Err(RecordCodecError::InvalidPackedDigitCount { total_digits: 19 })
+        ));
     }
 
     #[test]

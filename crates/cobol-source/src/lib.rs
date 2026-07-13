@@ -2573,7 +2573,7 @@ mod tests {
         let result = expand_copybooks(
             "COPY REC.\n",
             Some(&primary),
-            &[secondary.clone()],
+            std::slice::from_ref(&secondary),
             SourceFormat::Free,
             0,
             &mut includes,

@@ -80,11 +80,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `simd_matches_scalar` is available when the `simd` feature is enabled
 - `scale` validation is documented as `0..=total_digits`; `total_digits` is
   bounded to `1..=18`
+- Generated converter accessors and the shared `cobol-record` helper now decode
+  the full valid COMP-3 internal decimal sign family (`A/C/E/F` positive,
+  `B/D` negative) while preserving canonical encode output
+- Internal workspace path dependencies now include explicit version
+  requirements, and release documentation treats this branch as a
+  release-candidate artifact workflow rather than an accidental crates.io
+  publish path
+- The root workspace package is marked `publish = false` so this converter
+  upload branch cannot be accidentally pushed to crates.io
+- First-party workspace crate manifests now carry repository metadata for
+  cleaner package artifacts and downstream SBOM review
+- Local verification scripts now fail on native command errors and handle the
+  optional Python binding explicitly in smoke versus full verification profiles
 - Semantic schema hashes now exclude human-readable field/filler descriptions
 - Release packaging now includes SBOM metadata, generated operator artifacts,
   release artifact smoke testing, and signed checksum support
 
 ### Fixed
+- Shared record-codec COMP-3 decode now rejects invalid digit counts before
+  treating bytes as a packed field, matching the public `cobol_packed` boundary
+- Workspace clippy cleanup now keeps converter/runtime support crates passing
+  `-D warnings` outside the optional Python binding
 - SIMD-enabled decode now checks exact field length before parity expansion and
   uses debug-only scalar parity assertions, preventing oversized malformed input
   from causing full-slice expansion or production panics

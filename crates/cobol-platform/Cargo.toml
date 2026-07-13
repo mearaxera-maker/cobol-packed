@@ -5,6 +5,7 @@ edition = "2021"
 rust-version = "1.74"
 license = "MIT OR Apache-2.0"
 description = "Structured runtime platform configuration for generated COBOL Rust programs"
+repository = "https://github.com/mearaxera-maker/cobol-packed"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

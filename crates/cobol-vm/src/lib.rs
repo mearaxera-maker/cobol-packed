@@ -341,6 +341,7 @@ impl StoragePool {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn define_odo_table(
         &mut self,
         program: impl Into<String>,
@@ -366,6 +367,7 @@ impl StoragePool {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn define_odo_table_with_templates(
         &mut self,
         program: impl Into<String>,
@@ -2874,6 +2876,7 @@ impl VmProgramRegistry {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_with_lifecycle_descriptors(
         &mut self,
         name: impl Into<String>,
@@ -3669,7 +3672,11 @@ impl VmRuntime {
             let mut opened = match mode {
                 VmOpenMode::Input => OpenOptions::new().read(true).open(&*path),
                 VmOpenMode::Io => OpenOptions::new().read(true).write(true).open(&*path),
-                VmOpenMode::Output => OpenOptions::new().write(true).create(true).open(&*path),
+                VmOpenMode::Output => OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&*path),
                 VmOpenMode::Extend => OpenOptions::new().append(true).create(true).open(&*path),
             }
             .map_err(|error| VmError::FileRuntime {
@@ -3742,6 +3749,7 @@ impl VmRuntime {
         self.storage_pool.define_cell(key, bytes)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn define_odo_storage_table(
         &mut self,
         program: impl Into<String>,
@@ -3824,7 +3832,7 @@ impl VmRuntime {
         self.indexes
             .get(&name)
             .and_then(|index| index.occurrence)
-            .ok_or_else(|| VmError::UnsupportedIndex { name })
+            .ok_or(VmError::UnsupportedIndex { name })
     }
 
     pub fn define_odo(
@@ -4322,7 +4330,7 @@ impl VmRuntime {
                         parent.category,
                         parent.byte_len,
                     )?;
-                    if self.program.values_equal(&parent, &expected)? {
+                    if self.program.values_equal(parent, &expected)? {
                         return Ok(true);
                     }
                 }
@@ -4335,7 +4343,7 @@ impl VmRuntime {
                     let end =
                         self.program
                             .literal_for_category(end, parent.category, parent.byte_len)?;
-                    if self.program.value_in_range(&parent, &start, &end)? {
+                    if self.program.value_in_range(parent, &start, &end)? {
                         return Ok(true);
                     }
                 }
@@ -4783,6 +4791,14 @@ impl VmRuntime {
             let scoped = scoped_runtime_name(program, target);
             if let Ok(field) = self.program.field(&scoped) {
                 return Ok(field);
+            }
+            let normalized_program = normalize_vm_key(program);
+            let normalized_target = normalize_vm_key(target);
+            let prefix = format!("{normalized_program}.");
+            if let Some(unscoped) = normalized_target.strip_prefix(&prefix) {
+                if let Ok(field) = self.program.field(unscoped) {
+                    return Ok(field);
+                }
             }
         }
         self.program.field(target)
@@ -5344,6 +5360,7 @@ impl VmRuntime {
         Ok(None)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_search_serial(
         &mut self,
         procedure: &VmProcedure,
@@ -5378,6 +5395,7 @@ impl VmRuntime {
         self.execute_ops(procedure, at_end_ops)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn execute_search_all(
         &mut self,
         procedure: &VmProcedure,
@@ -6557,9 +6575,13 @@ impl VmRuntime {
         let mut bindings = BTreeMap::new();
         for (callee, caller_path) in linkage.iter().zip(using) {
             let binding = self.binding_for_call_argument(caller_path)?;
+            let callee_aliases = [
+                callee.name.clone(),
+                scoped_runtime_name(target_name, &callee.name),
+            ];
             bind_call_aliases(
                 &mut bindings,
-                std::iter::once(callee.name.as_str()),
+                callee_aliases.iter().map(String::as_str),
                 binding.clone(),
             );
             if !callee.children.is_empty() {
@@ -6590,9 +6612,14 @@ impl VmRuntime {
                             message: "CALL USING group child has no StoragePool descriptor"
                                 .to_string(),
                         })?;
+                    let child_aliases = formal_child
+                        .aliases
+                        .iter()
+                        .flat_map(|alias| [alias.clone(), scoped_runtime_name(target_name, alias)])
+                        .collect::<Vec<_>>();
                     bind_call_aliases(
                         &mut bindings,
-                        formal_child.aliases.iter().map(String::as_str),
+                        child_aliases.iter().map(String::as_str),
                         child_binding,
                     );
                 }
@@ -6820,9 +6847,9 @@ impl VmRuntime {
                 for subscript in &mut path.subscripts {
                     if let Some(index_name) = subscript.index_name.take() {
                         let occurrence = self.index_occurrence(&index_name)?;
-                        subscript.expr = Box::new(VmExpr::Number(occurrence.to_string()));
+                        *subscript.expr = VmExpr::Number(occurrence.to_string());
                     } else {
-                        subscript.expr = Box::new(self.materialize_expr(&subscript.expr)?);
+                        *subscript.expr = self.materialize_expr(&subscript.expr)?;
                     }
                 }
                 Ok(VmExpr::Access(path))
@@ -7771,11 +7798,13 @@ impl VmProgram {
     }
 
     fn field(&self, name: &str) -> Result<&VmField, VmError> {
+        let normalized = normalize_vm_key(name);
         self.fields
             .iter()
             .find(|field| {
                 field.name.eq_ignore_ascii_case(name)
                     || field.name.replace('.', "_").eq_ignore_ascii_case(name)
+                    || normalize_vm_key(&field.name) == normalized
             })
             .ok_or_else(|| VmError::UnknownReference {
                 name: name.to_string(),
@@ -8626,7 +8655,7 @@ mod tests {
         };
         let mut records = vec![
             vec![0x00, 0x1c, b'P'],
-            vec![0x00, 0x1a, b'X'],
+            vec![0x00, 0x11, b'X'],
             vec![0x00, 0x2c, b'T'],
         ];
         let original = records.clone();
@@ -9820,7 +9849,7 @@ mod tests {
             }],
         };
 
-        let _ = runtime.execute_procedure(&procedure).unwrap();
+        runtime.execute_procedure(&procedure).unwrap();
         assert_eq!(runtime.storage_pool.bytes(&rec_key).unwrap(), b"ZZ");
 
         assert!(runtime.restore_last_rerun_checkpoint("JUNK").unwrap());
@@ -10770,7 +10799,7 @@ mod tests {
             result_len: None,
         };
         let linkage_flag = VmAccessPath {
-            target: "LK-FLAG".to_string(),
+            target: "SUBPROG.LK_FLAG".to_string(),
             condition_name: None,
             subscripts: Vec::new(),
             reference_modifier: None,
@@ -10816,6 +10845,157 @@ mod tests {
             runtime
                 .storage_pool
                 .bytes(&StorageKey::scalar("MAIN", "FLAG"))
+                .unwrap(),
+            b"Y"
+        );
+    }
+
+    #[test]
+    fn runtime_dynamic_call_using_binds_generated_linkage_aliases() {
+        let program = VmProgram::with_declared_views(
+            DialectProfile::ibm_zos(),
+            vec![
+                VmField {
+                    name: "WS_PROG".to_string(),
+                    offset: 0,
+                    byte_len: 7,
+                    category: VmCategory::Alphanumeric,
+                    usage: VmUsage::Alphanumeric,
+                    picture: None,
+                },
+                VmField {
+                    name: "CALLMAIN.WS_PROG".to_string(),
+                    offset: 0,
+                    byte_len: 7,
+                    category: VmCategory::Alphanumeric,
+                    usage: VmUsage::Alphanumeric,
+                    picture: None,
+                },
+                VmField {
+                    name: "WS_FLAG".to_string(),
+                    offset: 0,
+                    byte_len: 1,
+                    category: VmCategory::Alphanumeric,
+                    usage: VmUsage::Alphanumeric,
+                    picture: None,
+                },
+                VmField {
+                    name: "CALLMAIN.WS_FLAG".to_string(),
+                    offset: 0,
+                    byte_len: 1,
+                    category: VmCategory::Alphanumeric,
+                    usage: VmUsage::Alphanumeric,
+                    picture: None,
+                },
+                VmField {
+                    name: "LK_FLAG".to_string(),
+                    offset: 0,
+                    byte_len: 1,
+                    category: VmCategory::Alphanumeric,
+                    usage: VmUsage::Alphanumeric,
+                    picture: None,
+                },
+                VmField {
+                    name: "SUBPROG.LK_FLAG".to_string(),
+                    offset: 0,
+                    byte_len: 1,
+                    category: VmCategory::Alphanumeric,
+                    usage: VmUsage::Alphanumeric,
+                    picture: None,
+                },
+            ],
+            Vec::new(),
+            Vec::new(),
+        );
+        let mut runtime = VmRuntime::new(program, StoragePool::default());
+        runtime
+            .storage_pool
+            .define_cell(
+                StorageKey::scalar("CALLMAIN", "WS_PROG"),
+                b"SUBPROG".to_vec(),
+            )
+            .unwrap();
+        runtime
+            .storage_pool
+            .define_cell(StorageKey::scalar("CALLMAIN", "WS_FLAG"), b"N".to_vec())
+            .unwrap();
+        runtime.bind_storage_cell("WS_PROG", StorageKey::scalar("CALLMAIN", "WS_PROG"));
+        runtime.bind_storage_cell(
+            "CALLMAIN.WS_PROG",
+            StorageKey::scalar("CALLMAIN", "WS_PROG"),
+        );
+        runtime.bind_storage_cell("WS_FLAG", StorageKey::scalar("CALLMAIN", "WS_FLAG"));
+        runtime.bind_storage_cell(
+            "CALLMAIN.WS_FLAG",
+            StorageKey::scalar("CALLMAIN", "WS_FLAG"),
+        );
+        runtime.registry.insert_with_lifecycle_descriptors(
+            "SUBPROG",
+            VmProcedure {
+                entry: "SUBMAIN".to_string(),
+                blocks: vec![VmBasicBlock {
+                    name: "SUBMAIN".to_string(),
+                    ops: vec![VmProcedureOp::Move {
+                        source: VmExpr::Literal("Y".to_string()),
+                        target: VmAccessPath {
+                            target: "LK_FLAG".to_string(),
+                            condition_name: None,
+                            subscripts: Vec::new(),
+                            reference_modifier: None,
+                            result_len: None,
+                        },
+                    }],
+                    transfer: VmControlTransfer::StopRun,
+                }],
+            },
+            vec![VmLinkageParam {
+                name: "LK_FLAG".to_string(),
+                children: Vec::new(),
+            }],
+            false,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let caller = VmProcedure {
+            entry: "MAIN".to_string(),
+            blocks: vec![VmBasicBlock {
+                name: "MAIN".to_string(),
+                ops: vec![
+                    VmProcedureOp::Call {
+                        target: VmCallTarget::Dynamic(VmExpr::Access(VmAccessPath {
+                            target: "WS_PROG".to_string(),
+                            condition_name: None,
+                            subscripts: Vec::new(),
+                            reference_modifier: None,
+                            result_len: None,
+                        })),
+                        using: vec![VmAccessPath {
+                            target: "WS_FLAG".to_string(),
+                            condition_name: None,
+                            subscripts: Vec::new(),
+                            reference_modifier: None,
+                            result_len: None,
+                        }],
+                    },
+                    VmProcedureOp::Display(vec![VmExpr::Access(VmAccessPath {
+                        target: "WS_FLAG".to_string(),
+                        condition_name: None,
+                        subscripts: Vec::new(),
+                        reference_modifier: None,
+                        result_len: None,
+                    })]),
+                ],
+                transfer: VmControlTransfer::StopRun,
+            }],
+        };
+
+        runtime.execute_procedure_as(&caller, "CALLMAIN").unwrap();
+        assert_eq!(runtime.display, vec!["Y"]);
+        assert_eq!(
+            runtime
+                .storage_pool
+                .bytes(&StorageKey::scalar("CALLMAIN", "WS_FLAG"))
                 .unwrap(),
             b"Y"
         );
