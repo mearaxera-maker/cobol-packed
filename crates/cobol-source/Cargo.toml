@@ -7,5 +7,4 @@ license = "MIT OR Apache-2.0"
 description = "COBOL source normalization and copybook expansion"
 
 [dependencies]
-cobol-text = { path = "../cobol-text" }
 thiserror = "2.0"
