@@ -8,7 +8,4 @@ description = "Semantic lowering from COBOL AST to converter IR"
 
 [dependencies]
 cobol-ir = { path = "../cobol-ir" }
-cobol-record = { path = "../cobol-record" }
 cobol-syntax = { path = "../cobol-syntax" }
-cobol-text = { path = "../cobol-text" }
-rust_decimal = "1.36"

@@ -1,6 +1,7 @@
 # Changelog
 
 All notable changes to `cobol_packed` are documented here.
+
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
@@ -126,10 +127,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   an explicit `PackedPolicy` object
 - `to_packed_lossless_with_policy` for symmetric policy-driven lossless encode
 - `NibbleIter` zero-allocation nibble streaming via `nibble_iter()`
-- `stream_nibbles()` iterator (alias for `nibble_iter()`) 
+- `stream_nibbles()` iterator (alias for `nibble_iter()`)
 - `encode_array` and `encode_lossless_array` const-generic array encode APIs
 - AVX2 nibble-expansion path (`expand_nibbles_avx2`) with debug parity check
 - `ZeroSignPolicy` enum (`Canonical` / `Preserve`)
 - `PackedPolicy` struct combining `SignMode` and `ZeroSignPolicy`
 - Exhaustive small-nibble-space test (`exhaustive_small_nibble_space`)
 - `docs/spec.md` formal specification sketch
+
+### Changed
+- SIMD nibble expander is now a validation layer only; scalar decoder remains
+  the single source of truth
+
+---
+
+## [0.6.0] - 2026-04-20
+
+### Added
+- Initial public release
+- `PackedConfig` runtime codec
+- `Packed<DIGITS, SCALE, SIGNED>` const-generic zero-sized codec
+- `LosslessDecimal` forensic wrapper
+- `from_packed` / `to_packed` with `SignMode::Pfd` and `SignMode::Nopfd`
+- `from_packed_lossless` / `to_packed_lossless`
+- `to_packed_with_sign` explicit sign nibble encoder
+- `to_packed_into` stack-only (no-alloc) encode
+- SSE2 nibble expansion with scalar fallback
+- `from_packed_scalar` reference decoder
+- `simd_matches_scalar` validation helper
+- Proptest roundtrip and no-panic harnesses
+- Criterion benchmarks: decode, encode-into, SIMD validation
+- MIT OR Apache-2.0 dual license
